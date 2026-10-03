@@ -212,7 +212,7 @@ export class Repo {
 
   /**
    * Permanent removal. The record must be deleted first. Leaves a tombstone so other
-   * devices don't bring it back, and clears its old values from the logs.
+   * devices don't bring it back, and clears its old values from the logs (docs/decisions/0003).
    */
   async purge(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
     assertDataTable(table)
@@ -277,7 +277,7 @@ export class Repo {
    * A field is undone only if it still has the exact stamp this change wrote; anything
    * that touched it since (on any device) gives it a different stamp, so it is left
    * alone and returned in `skipped`. No clocks are compared, so a wrong clock can't
-   * make undo overwrite newer work. Undoing a creation deletes the record (it stays in
+   * make undo overwrite newer work (docs/decisions/0008). Undoing a creation deletes the record (it stays in
    * "recently deleted"). A permanent removal cannot be undone.
    */
   async undo(changeId: Uuid, options: WriteOptions = {}): Promise<{ skipped: string[] }> {
@@ -353,7 +353,8 @@ export class Repo {
   }
 
   /**
-   * Merges many records in one transaction: if any record fails, none are saved.
+   * Merges many records in one transaction: if any record fails, none are saved
+   * (docs/decisions/0009).
    * Field definitions go first so later records are checked against them.
    * Finishes by renumbering any Role ID collisions.
    */
@@ -458,7 +459,7 @@ export class Repo {
   /**
    * Gives every posting its own Role ID. When two postings (or unlinked rows) share one,
    * the smaller id keeps it and the other moves, with its linked rows, to the next free
-   * number. Returns how many were renumbered.
+   * number. Returns how many were renumbered. See docs/decisions/0011.
    */
   private async renumberCollisions(
     tx: IDBTransaction,

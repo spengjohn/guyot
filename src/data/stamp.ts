@@ -1,14 +1,14 @@
 import type { DeviceId, Moment } from './types/core'
 import type { FieldStamp, StampRef } from './types/record'
 
-/** Stamp for a value the app filled in. Any real edit beats it. */
+/** Stamp for a value the app filled in. Any real edit beats it. See docs/decisions/0004. */
 export function defaultStamp(deviceId: DeviceId): FieldStamp {
   return { updatedAt: 0 as Moment, deviceId, base: null }
 }
 
 /**
  * Stamp for a real edit. Always newer than the value it replaces, even if this
- * device's clock is behind (clock skew guard).
+ * device's clock is behind (clock skew guard). See docs/decisions/0005, and 0002 for `base`.
  */
 export function stampEdit(
   previous: FieldStamp | undefined,

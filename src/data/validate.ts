@@ -14,7 +14,10 @@ export interface ValidationContext {
   customFields: ReadonlyMap<string, FieldDefinitionData>
 }
 
-/** A check returns a list of problems; an empty list means the value is fine. */
+/**
+ * A check returns a list of problems; an empty list means the value is fine.
+ * Checks are hand-written rather than from a schema library: see docs/decisions/0010.
+ */
 type Check = (value: unknown, path: string) => string[]
 type Obj = Record<string, unknown>
 

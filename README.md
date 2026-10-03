@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# Guyot
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A free, open web app for running a supervised job search. Named for the Guyot method of training vines along a wire.
 
-Currently, two official plugins are available:
+You choose where your data lives and which AI (if any) helps. Guyot works fully with no account, no cloud and no AI.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Live site: https://guyot.sgej.dev
+- Main repository: https://gitlab.com/sgej/guyot (mirrored to GitHub)
 
-## React Compiler
+## Principles
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **You review everything.** AI suggestions are proposals you accept or reject. Optional automatic mode keeps guardrails on: validation, an undoable log of every change, and items held for review when flagged.
+- **No application automation.** Guyot never opens, fills or submits job application forms.
+- **No backend, no accounts, no analytics on your content.** Your data stays in your browser, or in your own cloud storage, encrypted with your passphrase.
+- **Your choice of storage and AI.** Local-only with no AI is a complete mode, not a fallback.
+- **Accessible by default.** Semantic HTML, labels on every input, keyboard support, visible focus.
 
-## Expanding the ESLint configuration
+## Status
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Early development. The data layer (build step 1) is done; the user interface is next. See [docs/status.md](docs/status.md).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Development
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Requires Node.js (LTS).
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm run dev           # start the dev server
+npm test              # run tests once
+npm run lint          # ESLint, including accessibility rules
+npm run format        # format all files with Prettier
+npm run build         # type-check and build static files
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+Before considering a change done, run `npm run lint`, `npm run format:check`, `npm test` and `npm run build`. CI runs the same checks, and a failure blocks deploy.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Documentation
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- [docs/status.md](docs/status.md): what's built, what's deferred and what's next
+- [docs/data-layer.md](docs/data-layer.md): how storage, merging and validation fit together
+- [docs/decisions/](docs/decisions/): why the design is the way it is, one record per decision
+- [docs/typescript-notes.md](docs/typescript-notes.md): TypeScript concepts used in this codebase
+- [CLAUDE.md](CLAUDE.md): the full project specification and rules

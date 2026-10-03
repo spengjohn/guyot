@@ -33,7 +33,10 @@ export const LOG_TABLES: readonly TableName[] = ['changeLog', 'conflictLog']
 /** Version of the record format. Bump only with a migration in migrate.ts. */
 export const SCHEMA_VERSION = 1
 
-/** Fixed ID for the one shared-targets record, so every device creates the same record. */
+/**
+ * Fixed ID for the one shared-targets record, so every device creates the same record.
+ * See docs/decisions/0006.
+ */
 export const SHARED_TARGETS_ID = '5f3c2a8e-9b41-4d6a-8e27-c0b1d9f4a613' as Uuid
 
 /** Size limits. Anything larger is rejected by validation. */

@@ -18,7 +18,8 @@ export interface MergeResult<D> {
 type Obj = Record<string, unknown>
 
 /**
- * Merges two copies of the same record, field by field. Pure: changes neither input.
+ * Merges two copies of the same record, field by field (docs/decisions/0001).
+ * Pure: changes neither input.
  * Symmetric: merging (a, b) and (b, a) gives the same record.
  * Both copies must already be validated and at the same schemaVersion.
  */
@@ -75,7 +76,7 @@ export function mergeRecords<D>(a: StoredRecord<D>, b: StoredRecord<D>): MergeRe
 
 /**
  * The losing value is kept for review only if someone actually changed it
- * without seeing the winning edit.
+ * without seeing the winning edit. See docs/decisions/0002.
  */
 function isRealConflict(
   winner: FieldStamp,
@@ -90,7 +91,7 @@ function isRealConflict(
   return true
 }
 
-/** Purge always wins. If both are tombstones, keep the newer one. */
+/** Purge always wins (docs/decisions/0003). If both are tombstones, keep the newer one. */
 function mergeTombstone<D>(a: StoredRecord<D>, b: StoredRecord<D>): Tombstone {
   let tombstone: Tombstone
   if (a.purged && b.purged) tombstone = compareStamps(a, b) >= 0 ? a : b

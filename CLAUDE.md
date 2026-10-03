@@ -51,6 +51,15 @@ A free, open web app for running a supervised job search. Named for the Guyot me
 
 Run lint, format:check, test and build before considering a change done.
 
+## Documentation
+
+Keep the docs current as part of each change, not afterwards:
+
+- **Decisions:** when a design choice is made (especially one that rejects a simpler approach to avoid losing data), add a record in `docs/decisions/` using the outline in its README, and link it from the code it explains. Replaced decisions are marked superseded, not deleted.
+- **Status:** at the end of each build step, update `docs/status.md`: what was built, what was deferred and why, known limits, what's next.
+- **Data layer:** when files, flows or rule coverage in `src/data/` change, update `docs/data-layer.md`.
+- **TypeScript notes:** when a new TypeScript concept first appears, add it to `docs/typescript-notes.md` with an example from the code.
+
 ## Data model
 
 Data integrity is the top priority. Every record and every field carries sync metadata from day one, so merges never lose data and no later migration is needed.

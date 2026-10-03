@@ -17,7 +17,7 @@ export function roleNumber(roleId: RoleId): number {
  * An ID derived from text, the same on every device. Used where two devices must
  * create the same record independently (such as one conflict seen by both).
  * cyrb128 hash: fast and synchronous, so it can run inside an IndexedDB transaction.
- * Not for security.
+ * Not for security. See docs/decisions/0007.
  */
 export function deterministicId(text: string): Uuid {
   let h1 = 1779033703
