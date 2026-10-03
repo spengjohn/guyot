@@ -1,4 +1,10 @@
-import { LOG_TABLES, SCHEMA_VERSION, SHARED_TARGETS_ID } from './constants'
+import {
+  LOG_TABLES,
+  ROLE_ID_TABLES,
+  SCHEMA_VERSION,
+  SHARED_TARGETS_ID,
+  TABLE_NAMES,
+} from './constants'
 import { META_STORE, openDatabase, request, transactionDone } from './db'
 import { emptySharedTargets } from './defaults'
 import { deterministicId, formatRoleId, newId, roleNumber } from './ids'
@@ -34,6 +40,13 @@ export interface MergeOutcome<T extends TableName> {
   record: RecordOf<T>
   changed: boolean
   conflicts: number
+}
+
+export interface MergeSummary {
+  records: number
+  changed: number
+  conflicts: number // new conflict log entries
+  renumbered: number // postings (with their rows) moved to a new Role ID
 }
 
 /** Thrown when a write fails validation. Nothing is saved. */
@@ -126,7 +139,7 @@ export class Repo {
       throw new Error('There is only one shared-targets record; use getSharedTargets().')
     }
     assertNoSyncKeys(data as Obj)
-    return this.write(table, async (tx, ctx) => {
+    return this.write(async (tx, ctx) => {
       const at = this.clock()
       const stamp = stampEdit(undefined, this.deviceId, at)
       const record = buildRecord(newId(), data as Obj, stamp, mapFieldsOf(table))
@@ -149,7 +162,7 @@ export class Repo {
   ): Promise<Live<T>> {
     assertDataTable(table)
     assertNoSyncKeys(changes as Obj)
-    const record = await this.write(table, (tx, ctx) =>
+    const record = await this.write((tx, ctx) =>
       this.change(tx, ctx, table, id, changes as Obj, 'update', options),
     )
     return record as unknown as Live<T> // validated for this table before saving
@@ -159,14 +172,14 @@ export class Repo {
   async delete(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
     assertDataTable(table)
     if (table === 'sharedTargets') throw new Error('Shared targets can be reset, not deleted.')
-    await this.write(table, (tx, ctx) =>
+    await this.write((tx, ctx) =>
       this.change(tx, ctx, table, id, { deleted: true }, 'delete', options),
     )
   }
 
   async restore(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
     assertDataTable(table)
-    await this.write(table, (tx, ctx) =>
+    await this.write((tx, ctx) =>
       this.change(tx, ctx, table, id, { deleted: false }, 'restore', options),
     )
   }
@@ -178,7 +191,7 @@ export class Repo {
   async purge(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
     assertDataTable(table)
     if (table === 'sharedTargets') throw new Error('Shared targets can be reset, not removed.')
-    await this.write(table, async (tx, ctx) => {
+    await this.write(async (tx, ctx) => {
       const old = await load(tx, table, id)
       if (!old.deleted) throw new Error('Delete the record before removing it permanently.')
       const at = this.clock()
@@ -192,7 +205,7 @@ export class Repo {
 
   /** The one shared-targets record. Created on first use with default-stamped empty values. */
   async getSharedTargets(): Promise<LiveRecord<SharedTargetsData>> {
-    return this.write('sharedTargets', async (tx, ctx) => {
+    return this.write(async (tx, ctx) => {
       const store = tx.objectStore('sharedTargets')
       const existing = await request(store.get(SHARED_TARGETS_ID))
       if (existing) return existing as LiveRecord<SharedTargetsData>
@@ -211,7 +224,7 @@ export class Repo {
   async resetSharedTargets(options: WriteOptions = {}): Promise<LiveRecord<SharedTargetsData>> {
     await this.getSharedTargets()
     const empty = emptySharedTargets() as unknown as Obj
-    const record = await this.write('sharedTargets', (tx, ctx) =>
+    const record = await this.write((tx, ctx) =>
       this.change(tx, ctx, 'sharedTargets', SHARED_TARGETS_ID, empty, 'update', options, true),
     )
     return record as unknown as LiveRecord<SharedTargetsData> // validated before saving
@@ -241,60 +254,160 @@ export class Repo {
     incoming: unknown,
     options: WriteOptions = { appliedBy: 'import' },
   ): Promise<MergeOutcome<T>> {
-    return this.write(table, async (tx, ctx) => {
-      const report = validateRecord(table, incoming, ctx)
-      if (report.errors.length > 0) throw new ValidationError(report.errors)
-      const remote = incoming as Stored
-      if (table === 'sharedTargets' && (remote.id !== SHARED_TARGETS_ID || remote.deleted)) {
-        throw new ValidationError(['sharedTargets: must use the fixed ID and cannot be deleted'])
-      }
-
-      const local = (await request(tx.objectStore(table).get(remote.id))) as Stored | undefined
-      let merged: Stored
-      let drafts: ConflictDraft[] = []
-      if (!local) {
-        merged = structuredClone(remote)
-      } else {
-        const result = mergeRecords(local as StoredRecord<object>, remote as StoredRecord<object>)
-        merged = result.record as unknown as Stored
-        drafts = result.conflicts
-      }
-      // Even when our copy wins every field (nothing to save), the losing values are still logged.
-      const changed = !local || !jsonEqual(local, merged)
-      const at = this.clock()
-      let conflicts = 0
-      if (!LOG_TABLES.includes(table)) {
-        for (const draft of drafts) {
-          if (await this.logConflict(tx, ctx, table, remote.id, draft, at)) conflicts++
-        }
-      }
-      if (!changed) return { record: local as RecordOf<T>, changed, conflicts }
-
-      await save(tx, table, merged, ctx)
-      if (!LOG_TABLES.includes(table)) {
-        if (merged.purged) {
-          if (!local?.purged) await this.scrubLogs(tx, ctx, remote.id, at)
-          await this.logChange(tx, ctx, table, remote.id, 'import', [], {}, at, options)
-        } else {
-          const keys = changedKeys(local, merged)
-          const before = local ? valuesOf(local, keys) : {}
-          await this.logChange(tx, ctx, table, remote.id, 'import', keys, before, at, options)
-        }
-      }
-      if (typeof merged.roleId === 'string') await bumpRoleCounter(tx, merged.roleId as RoleId)
-      return { record: merged as unknown as RecordOf<T>, changed, conflicts }
+    return this.write(async (tx, ctx) => {
+      const outcome = await this.mergeOne(tx, ctx, table, incoming, options)
+      await this.renumberCollisions(tx, ctx, options)
+      return outcome
     })
+  }
+
+  /**
+   * Merges many records in one transaction: if any record fails, none are saved.
+   * Field definitions go first so later records are checked against them.
+   * Finishes by renumbering any Role ID collisions.
+   */
+  async saveMergedMany(
+    entries: { table: TableName; record: unknown }[],
+    options: WriteOptions = { appliedBy: 'import' },
+  ): Promise<MergeSummary> {
+    const isDefs = (e: { table: TableName }) => e.table === 'fieldDefinitions'
+    const ordered = [...entries.filter(isDefs), ...entries.filter((e) => !isDefs(e))]
+    return this.write(async (tx, ctx) => {
+      const summary: MergeSummary = { records: 0, changed: 0, conflicts: 0, renumbered: 0 }
+      let context = ctx
+      let defsDone = false
+      for (const { table, record } of ordered) {
+        if (!defsDone && table !== 'fieldDefinitions') {
+          context = await loadContext(tx) // now includes the merged field definitions
+          defsDone = true
+        }
+        const outcome = await this.mergeOne(tx, context, table, record, options)
+        summary.records++
+        if (outcome.changed) summary.changed++
+        summary.conflicts += outcome.conflicts
+      }
+      summary.renumbered = await this.renumberCollisions(tx, context, options)
+      return summary
+    })
+  }
+
+  /** Every stored record in a table, including deleted ones and tombstones. For export. */
+  async listAll<T extends TableName>(table: T): Promise<RecordOf<T>[]> {
+    return this.getAll(table)
   }
 
   // ---------- Internals ----------
 
-  /** Runs `fn` in one read-write transaction with everything a write may touch. */
-  private write<R>(
-    table: TableName,
-    fn: (tx: IDBTransaction, ctx: ValidationContext) => Promise<R>,
-  ): Promise<R> {
-    const stores = [table, 'changeLog', 'conflictLog', 'fieldDefinitions', META_STORE]
-    return inTransaction(this.db, stores, async (tx) => fn(tx, await loadContext(tx)))
+  /** Runs `fn` in one read-write transaction over every store, so any write can touch any table. */
+  private write<R>(fn: (tx: IDBTransaction, ctx: ValidationContext) => Promise<R>): Promise<R> {
+    return inTransaction(this.db, [...TABLE_NAMES, META_STORE], async (tx) =>
+      fn(tx, await loadContext(tx)),
+    )
+  }
+
+  private async mergeOne<T extends TableName>(
+    tx: IDBTransaction,
+    ctx: ValidationContext,
+    table: T,
+    incoming: unknown,
+    options: WriteOptions,
+  ): Promise<MergeOutcome<T>> {
+    const report = validateRecord(table, incoming, ctx)
+    if (report.errors.length > 0) throw new ValidationError(report.errors)
+    const remote = incoming as Stored
+    if (table === 'sharedTargets' && (remote.id !== SHARED_TARGETS_ID || remote.deleted)) {
+      throw new ValidationError(['sharedTargets: must use the fixed ID and cannot be deleted'])
+    }
+
+    const local = (await request(tx.objectStore(table).get(remote.id))) as Stored | undefined
+    let merged: Stored
+    let drafts: ConflictDraft[] = []
+    if (!local) {
+      merged = structuredClone(remote)
+    } else {
+      const result = mergeRecords(local as StoredRecord<object>, remote as StoredRecord<object>)
+      merged = result.record as unknown as Stored
+      drafts = result.conflicts
+    }
+    const at = this.clock()
+
+    // A log entry about a record this device purged must not bring its data back.
+    if (LOG_TABLES.includes(table) && !merged.purged) {
+      const target = await request(
+        tx.objectStore(merged.table as TableName).get(merged.recordId as Uuid),
+      )
+      if ((target as Stored | undefined)?.purged)
+        merged = scrubbed(table, merged, this.deviceId, at)
+    }
+
+    // Even when our copy wins every field (nothing to save), the losing values are still logged.
+    const changed = !local || !jsonEqual(local, merged)
+    let conflicts = 0
+    if (!LOG_TABLES.includes(table)) {
+      for (const draft of drafts) {
+        if (await this.logConflict(tx, ctx, table, remote.id, draft, at)) conflicts++
+      }
+    }
+    if (!changed) return { record: local as unknown as RecordOf<T>, changed, conflicts }
+
+    await save(tx, table, merged, ctx)
+    if (!LOG_TABLES.includes(table)) {
+      if (merged.purged) {
+        if (!local?.purged) await this.scrubLogs(tx, ctx, remote.id, at)
+        await this.logChange(tx, ctx, table, remote.id, 'import', [], {}, at, options)
+      } else {
+        const keys = changedKeys(local, merged)
+        const before = local ? valuesOf(local, keys) : {}
+        await this.logChange(tx, ctx, table, remote.id, 'import', keys, before, at, options)
+      }
+    }
+    return { record: merged as unknown as RecordOf<T>, changed, conflicts }
+  }
+
+  /**
+   * Gives every posting its own Role ID. When two postings (or unlinked rows) share one,
+   * the smaller id keeps it and the other moves, with its linked rows, to the next free
+   * number. Returns how many were renumbered.
+   */
+  private async renumberCollisions(
+    tx: IDBTransaction,
+    ctx: ValidationContext,
+    options: WriteOptions,
+  ): Promise<number> {
+    // roleId -> owner (the posting, or the row itself if unlinked) -> its rows
+    const byRole = new Map<string, Map<string, { table: TableName; id: Uuid }[]>>()
+    let highest = 0
+    for (const table of ROLE_ID_TABLES) {
+      for (const row of (await request(tx.objectStore(table).getAll())) as Stored[]) {
+        if (row.purged || typeof row.roleId !== 'string') continue
+        highest = Math.max(highest, roleNumber(row.roleId as RoleId))
+        const owner = table === 'postings' ? row.id : ((row.postingId as Uuid | null) ?? row.id)
+        const owners = byRole.get(row.roleId) ?? new Map()
+        byRole.set(row.roleId, owners)
+        owners.set(owner, [...(owners.get(owner) ?? []), { table, id: row.id }])
+      }
+    }
+
+    const metaStore = tx.objectStore(META_STORE)
+    const meta = (await request(metaStore.get(META_KEY))) as Meta
+    let next = Math.max(highest + 1, meta.nextRoleNumber)
+    let renumbered = 0
+    const byKey = <V>(a: [string, V], b: [string, V]) => (a[0] < b[0] ? -1 : 1)
+    for (const [, owners] of [...byRole.entries()].sort(byKey)) {
+      if (owners.size < 2) continue
+      const [, ...movers] = [...owners.entries()].sort(byKey) // smallest id keeps the number
+      for (const [, rows] of movers) {
+        const changes = { roleId: formatRoleId(next++) }
+        for (const row of rows) {
+          await this.change(tx, ctx, row.table, row.id, changes, 'renumber', options)
+        }
+        renumbered++
+      }
+    }
+    if (next !== meta.nextRoleNumber) {
+      await request(metaStore.put({ ...meta, nextRoleNumber: next }, META_KEY))
+    }
+    return renumbered
   }
 
   private async change(
@@ -382,15 +495,12 @@ export class Repo {
     recordId: Uuid,
     at: Moment,
   ): Promise<void> {
-    const changes = tx.objectStore('changeLog').index('recordId')
-    for (const entry of (await request(changes.getAll(recordId))) as Stored[]) {
-      if (entry.purged || Object.keys(entry.before as Obj).length === 0) continue
-      const { next } = applyChanges(entry, { before: {} }, [], this.deviceId, at, false)
-      await save(tx, 'changeLog', next, ctx)
-    }
-    const conflicts = tx.objectStore('conflictLog').index('recordId')
-    for (const entry of (await request(conflicts.getAll(recordId))) as Stored[]) {
-      if (!entry.purged) await save(tx, 'conflictLog', tombstoneOf(entry, this.deviceId, at), ctx)
+    for (const table of LOG_TABLES) {
+      const index = tx.objectStore(table).index('recordId')
+      for (const entry of (await request(index.getAll(recordId))) as Stored[]) {
+        const clean = scrubbed(table, entry, this.deviceId, at)
+        if (clean !== entry) await save(tx, table, clean, ctx)
+      }
     }
   }
 }
@@ -452,12 +562,15 @@ async function save(
   await request(tx.objectStore(table).put(record))
 }
 
-async function bumpRoleCounter(tx: IDBTransaction, roleId: RoleId): Promise<void> {
-  const store = tx.objectStore(META_STORE)
-  const meta = (await request(store.get(META_KEY))) as Meta
-  const n = roleNumber(roleId)
-  if (n >= meta.nextRoleNumber)
-    await request(store.put({ ...meta, nextRoleNumber: n + 1 }, META_KEY))
+/**
+ * A log entry with a purged record's data removed: change-log entries lose their old
+ * values; conflict entries become tombstones. Returns the entry unchanged if already clean.
+ */
+function scrubbed(table: TableName, entry: Stored, deviceId: DeviceId, at: Moment): Stored {
+  if (entry.purged) return entry
+  if (table === 'conflictLog') return tombstoneOf(entry, deviceId, at)
+  if (Object.keys(entry.before as Obj).length === 0) return entry
+  return applyChanges(entry, { before: {} }, [], deviceId, at, false).next
 }
 
 function isObj(value: unknown): value is Obj {

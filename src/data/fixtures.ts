@@ -3,7 +3,7 @@ import { SCHEMA_VERSION, TABLE_NAMES } from './constants'
 import { compareStamps, stampEdit } from './stamp'
 import type { CalendarDay, ChoiceId, DeviceId, Moment, RoleId, Uuid } from './types/core'
 import type { FieldMeta, FieldStamp, LiveRecord, Tombstone } from './types/record'
-import type { ApplicationData, ExportFile, TableName } from './types/tables'
+import type { ApplicationData, ExportFile, PostingData, TableName } from './types/tables'
 
 export { emptySharedTargets } from './defaults'
 
@@ -76,6 +76,19 @@ export function tombstone(id: Uuid, stamp: FieldStamp): Tombstone {
     schemaVersion: SCHEMA_VERSION,
     fieldMeta: { deleted: stamp },
     purged: true,
+  }
+}
+
+export function samplePosting(): PostingData {
+  return {
+    roleId: 'R001' as RoleId,
+    profileId: null,
+    url: 'https://example.com/jobs/123',
+    company: 'Example Co',
+    role: 'Frontend Developer',
+    location: 'Remote',
+    text: 'We are hiring a frontend developer.',
+    custom: {},
   }
 }
 

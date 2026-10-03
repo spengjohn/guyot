@@ -111,6 +111,7 @@ export interface ResumeVersionData {
   name: string
   isMaster: boolean
   roleId: RoleId | null // set on per-posting copies
+  postingId: Uuid | null // the posting a copy was made for
 }
 export interface PipelineDefinitionData {
   name: string

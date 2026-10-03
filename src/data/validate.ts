@@ -336,7 +336,12 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
     maps: { custom: customMap },
   },
   resumeVersions: {
-    fields: { name: shortText, isMaster: bool, roleId: nullable(roleId) },
+    fields: {
+      name: shortText,
+      isMaster: bool,
+      roleId: nullable(roleId),
+      postingId: nullable(uuid),
+    },
     maps: {},
   },
   jdSnapshots: {
