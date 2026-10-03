@@ -117,8 +117,8 @@ function isObj(value: unknown): value is Obj {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Reads a field. A map entry that was removed reads as undefined. */
-function getValue(record: object, key: string): unknown {
+/** Reads a field by its fieldMeta key. A map entry that was removed reads as undefined. */
+export function getValue(record: object, key: string): unknown {
   const [top, entry] = splitKey(key)
   const value = (record as Obj)[top]
   if (entry === null) return value

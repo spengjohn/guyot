@@ -1,9 +1,11 @@
 // Test helpers only. Not imported by the app.
-import { SCHEMA_VERSION } from './constants'
+import { SCHEMA_VERSION, TABLE_NAMES } from './constants'
 import { compareStamps, stampEdit } from './stamp'
 import type { CalendarDay, ChoiceId, DeviceId, Moment, RoleId, Uuid } from './types/core'
 import type { FieldMeta, FieldStamp, LiveRecord, Tombstone } from './types/record'
-import type { ApplicationData, ExportFile, SharedTargetsData, TableName } from './types/tables'
+import type { ApplicationData, ExportFile, TableName } from './types/tables'
+
+export { emptySharedTargets } from './defaults'
 
 export const LAPTOP = 'aaaaaaaa-0000-4000-8000-000000000000' as DeviceId
 export const PHONE = 'bbbbbbbb-0000-4000-8000-000000000000' as DeviceId
@@ -77,22 +79,6 @@ export function tombstone(id: Uuid, stamp: FieldStamp): Tombstone {
   }
 }
 
-export function emptySharedTargets(): SharedTargetsData {
-  return {
-    roleTypes: [],
-    industries: [],
-    prioritizeCompanies: [],
-    excludeCompanies: [],
-    excludeRule: '',
-    mustHaveKeywords: [],
-    niceToHaveKeywords: [],
-    dealbreakers: [],
-    eligibilityNotes: '',
-    preferredSources: [],
-    custom: {},
-  }
-}
-
 export function sampleApplication(): ApplicationData {
   return {
     roleId: 'R001' as RoleId,
@@ -115,22 +101,7 @@ export function sampleApplication(): ApplicationData {
 
 export function emptyExportFile(): ExportFile {
   const tables = {} as Record<TableName, never[]>
-  for (const name of [
-    'searchProfiles',
-    'sharedTargets',
-    'postings',
-    'stageRows',
-    'applications',
-    'resumeVersions',
-    'jdSnapshots',
-    'fieldDefinitions',
-    'pipelineDefinitions',
-    'stageInstructions',
-    'conflictLog',
-    'changeLog',
-  ] as const) {
-    tables[name] = []
-  }
+  for (const name of TABLE_NAMES) tables[name] = []
   return {
     app: 'guyot',
     formatVersion: 1,

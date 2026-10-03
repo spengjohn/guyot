@@ -95,7 +95,8 @@ export interface ChangeLogData {
   table: TableName
   recordId: Uuid
   action: ChangeAction
-  before: Record<string, JsonValue> // old value of each changed field, for undo
+  fieldKeys: string[] // every field this change touched, using fieldMeta keys
+  before: Record<string, JsonValue> // old value of each touched field; absent if it didn't exist
   appliedBy: 'user' | 'ai' | 'import'
   stageId: Uuid | null // set when appliedBy is 'ai'
 }

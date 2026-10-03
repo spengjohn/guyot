@@ -1,4 +1,4 @@
-import { LIMITS, SCHEMA_VERSION, SHARED_TARGETS_ID } from './constants'
+import { LIMITS, SCHEMA_VERSION, SHARED_TARGETS_ID, TABLE_NAMES, TABLE_SET } from './constants'
 import { isCalendarDay, isTimeZone } from './time'
 import type { CustomFieldType, FieldDefinitionData, FieldType, PayPeriod } from './types/fields'
 import type { ChangeAction, ExportFile, SharedTargetsFields, TableName } from './types/tables'
@@ -273,20 +273,6 @@ const fieldScope: Check = (v, path) => {
 const stampRef = shape({ updatedAt: moment, deviceId: uuid })
 const fieldStamp = shape({ updatedAt: moment, deviceId: uuid, base: nullable(stampRef) })
 
-const TABLE_NAMES: Record<TableName, true> = {
-  searchProfiles: true,
-  sharedTargets: true,
-  postings: true,
-  stageRows: true,
-  applications: true,
-  resumeVersions: true,
-  jdSnapshots: true,
-  fieldDefinitions: true,
-  pipelineDefinitions: true,
-  stageInstructions: true,
-  conflictLog: true,
-  changeLog: true,
-}
 const CHANGE_ACTIONS: Record<ChangeAction, true> = {
   create: true,
   update: true,
@@ -381,7 +367,7 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
   },
   conflictLog: {
     fields: {
-      table: oneOf(TABLE_NAMES),
+      table: oneOf(TABLE_SET),
       recordId: uuid,
       fieldKey: shortText,
       losingValue: json(),
@@ -393,9 +379,10 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
   },
   changeLog: {
     fields: {
-      table: oneOf(TABLE_NAMES),
+      table: oneOf(TABLE_SET),
       recordId: uuid,
       action: oneOf(CHANGE_ACTIONS),
+      fieldKeys: arrayOf(shortText, 10_000),
       before: (v, path) => (isObj(v) ? json()(v, path) : [`${path}: expected an object`]),
       appliedBy: oneOf({ user: true, ai: true, import: true }),
       stageId: nullable(uuid),
@@ -412,6 +399,14 @@ const SYNC_CHECKS: Record<string, Check> = {
   schemaVersion: (v, path) =>
     v === SCHEMA_VERSION ? [] : [`${path}: expected schema version ${SCHEMA_VERSION}`],
   purged: bool,
+}
+
+/** Record keys that belong to the app, never edited as data. */
+export const SYNC_KEYS: ReadonlySet<string> = new Set([...Object.keys(SYNC_CHECKS), 'fieldMeta'])
+
+/** The map-like fields of a table (one stamp per entry), such as 'custom'. */
+export function mapFieldsOf(table: TableName): string[] {
+  return Object.keys(SCHEMAS[table].maps)
 }
 
 // ---------- Records ----------
@@ -545,7 +540,7 @@ export function validateExportFile(
   const tables = input.tables as Obj
   const errors = shape(
     Object.fromEntries(
-      Object.keys(TABLE_NAMES).map((name) => [
+      TABLE_NAMES.map((name) => [
         name,
         (v: unknown, path: string) => (Array.isArray(v) ? [] : [`${path}: expected a list`]),
       ]),
@@ -564,7 +559,7 @@ export function validateExportFile(
   }
 
   const warnings: string[] = []
-  for (const name of Object.keys(TABLE_NAMES) as TableName[]) {
+  for (const name of TABLE_NAMES) {
     const seen = new Set<unknown>()
     const records = tables[name] as unknown[]
     for (const [i, record] of records.entries()) {
