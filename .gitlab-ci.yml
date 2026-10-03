@@ -1,9 +1,11 @@
-# Builds the Vite app and publishes it to GitLab Pages
+# Checks the code, builds the Vite app, and publishes it to GitLab Pages
 # on every push to the default branch (main).
 pages:
   image: node:lts
   script:
     - npm ci
+    - npm run lint
+    - npm run format:check
     - npm run build
     # GitLab Pages serves the "public" folder, but Vite builds to "dist".
     # Vite's own public/ assets are already copied into dist, so swap them.
