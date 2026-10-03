@@ -8,9 +8,10 @@ export const DB_NAME = 'guyot'
  */
 const DB_VERSION = 1
 
-/** Local-only key-value stores. Never synced. */
+/** Local-only stores. Never synced or exported. */
 export const META_STORE = 'meta'
 export const SETTINGS_STORE = 'settings'
+export const BACKUPS_STORE = 'backups'
 
 export function openDatabase(name: string = DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -26,6 +27,9 @@ export function openDatabase(name: string = DB_NAME): Promise<IDBDatabase> {
       }
       for (const store of [META_STORE, SETTINGS_STORE]) {
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store)
+      }
+      if (!db.objectStoreNames.contains(BACKUPS_STORE)) {
+        db.createObjectStore(BACKUPS_STORE, { keyPath: 'id' })
       }
     }
     req.onsuccess = () => {

@@ -537,7 +537,7 @@ export function validateExportFile(
     formatVersion: (v, path) => (v === 1 ? [] : [`${path}: unsupported format version`]),
     exportedAt: moment,
     deviceId: uuid,
-    schemaVersion: num({ integer: true, min: 1 }),
+    schemaVersion: num({ integer: true, min: 0 }), // too old or too new is explained below
     tables: (v, path) => (isObj(v) ? [] : [`${path}: expected an object`]),
   })
   const headerIssues = header(input, 'file')
@@ -547,7 +547,7 @@ export function validateExportFile(
   }
   if (input.schemaVersion !== SCHEMA_VERSION) {
     return fail([
-      'file.schemaVersion: made by an older version of Guyot; upgrading is not supported yet',
+      'file.schemaVersion: made by an older version of Guyot that this version cannot upgrade',
     ])
   }
 

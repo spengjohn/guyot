@@ -1,4 +1,5 @@
 import { SCHEMA_VERSION, TABLE_NAMES } from './constants'
+import { upgradeFile, type Migrations } from './migrate'
 import { Repo, ValidationError, type MergeSummary } from './repo'
 import { now } from './time'
 import type { Moment } from './types/core'
@@ -40,16 +41,29 @@ export type ImportOutcome =
 
 /**
  * Imports an export file by merging every record into this device's data.
- * The whole file is validated first, and all records are saved in one transaction:
- * an invalid file changes nothing.
+ * Files from an older version are upgraded first. The whole file is validated, and all
+ * records are saved in one transaction: an invalid file changes nothing.
+ * `migrations` is for tests.
  */
-export async function importJson(repo: Repo, text: string): Promise<ImportOutcome> {
+export async function importJson(
+  repo: Repo,
+  text: string,
+  options: { migrations?: Migrations } = {},
+): Promise<ImportOutcome> {
   if (text.length > MAX_IMPORT_CHARS) return { ok: false, errors: ['File: too large to import'] }
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
     return { ok: false, errors: ['File: not valid JSON'] }
+  }
+  try {
+    parsed = upgradeFile(parsed, options.migrations)
+  } catch {
+    return {
+      ok: false,
+      errors: ['File: made by an older version of Guyot and could not be upgraded'],
+    }
   }
 
   const localFields = new Map<string, FieldDefinitionData>()

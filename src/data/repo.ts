@@ -5,7 +5,9 @@ import {
   SHARED_TARGETS_ID,
   TABLE_NAMES,
 } from './constants'
+import { getBackup, listBackups, type Backup, type BackupInfo } from './backup'
 import { META_STORE, openDatabase, request, transactionDone } from './db'
+import { migrateDatabase, type Migrations } from './migrate'
 import { emptySharedTargets } from './defaults'
 import { deterministicId, formatRoleId, newId, roleNumber } from './ids'
 import { getValue, jsonEqual, mergeRecords, type ConflictDraft } from './merge'
@@ -80,26 +82,50 @@ export class Repo {
     this.clock = clock
   }
 
-  /** Opens the database, creating this device's ID on first run. `clock` is for tests. */
-  static async open(options: { name?: string; clock?: () => Moment } = {}): Promise<Repo> {
+  /**
+   * Opens the database, creating this device's ID on first run, and upgrades older
+   * data (after a backup). Refuses data saved by a newer version of the app.
+   * `clock` and `migrations` are for tests.
+   */
+  static async open(
+    options: { name?: string; clock?: () => Moment; migrations?: Migrations } = {},
+  ): Promise<Repo> {
+    const clock = options.clock ?? now
     const db = await openDatabase(options.name)
-    const meta = await inTransaction(db, [META_STORE], async (tx) => {
-      const store = tx.objectStore(META_STORE)
-      const existing = (await request(store.get(META_KEY))) as Meta | undefined
-      if (existing) return existing
-      const created: Meta = {
-        deviceId: crypto.randomUUID() as DeviceId,
-        nextRoleNumber: 1,
-        lastBackupAt: null,
-      }
-      await request(store.put(created, META_KEY))
-      return created
-    })
-    return new Repo(db, meta.deviceId, options.clock ?? now)
+    try {
+      const meta = await inTransaction(db, [META_STORE], async (tx) => {
+        const store = tx.objectStore(META_STORE)
+        const existing = (await request(store.get(META_KEY))) as Meta | undefined
+        if (existing) return existing
+        const created: Meta = {
+          deviceId: crypto.randomUUID() as DeviceId,
+          schemaVersion: SCHEMA_VERSION,
+          nextRoleNumber: 1,
+          lastBackupAt: null,
+        }
+        await request(store.put(created, META_KEY))
+        return created
+      })
+      await migrateDatabase(db, { migrations: options.migrations, clock })
+      return new Repo(db, meta.deviceId, clock)
+    } catch (error) {
+      db.close()
+      throw error
+    }
   }
 
   close(): void {
     this.db.close()
+  }
+
+  /** Automatic local backups, newest first. */
+  listBackups(): Promise<BackupInfo[]> {
+    return listBackups(this.db)
+  }
+
+  /** One backup, including its data as export-file JSON (for download). */
+  getBackup(id: Uuid): Promise<Backup | undefined> {
+    return getBackup(this.db, id)
   }
 
   // ---------- Reading ----------

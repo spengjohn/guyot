@@ -144,6 +144,7 @@ export type RecordOf<T extends TableName> = StoredRecord<Tables[T]>
 /** Local-only, never synced. */
 export interface Meta {
   deviceId: DeviceId
+  schemaVersion: number // the version the stored records are at
   nextRoleNumber: number
   lastBackupAt: Moment | null
 }
