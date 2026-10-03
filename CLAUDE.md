@@ -79,6 +79,7 @@ Data integrity is the top priority. Every record and every field carries sync me
 9. **Real conflicts only.** Each stamp's `base` records the last other-device stamp it replaced. A losing value goes to the conflict log only if it differs and the winner wasn't made on top of it (same device, or `base` equals the loser's stamp). Map-like fields (`custom`, `overrides`, field choices) get one stamp per entry, keyed `custom.<fieldId>` and so on.
 10. **Singletons use fixed IDs.** Synced records there is exactly one of (shared targets) use a hard-coded ID so every device creates the same record. They can't be deleted or purged; "reset" saves empty values as real edits. Local-only stores (`meta` with `deviceId`) never use fixed IDs.
 11. **Role ID collisions.** If two records share a Role ID, the one with the smaller `id` keeps it and the other is renumbered to the next free number, logged as a `renumber` change.
+12. **Undo never overwrites newer work.** Each change log entry records the exact stamp it wrote on each field. Undo restores a field only if it still has that stamp; otherwise the field is skipped and reported. Undo never compares clock times.
 
 ### Dates and times
 

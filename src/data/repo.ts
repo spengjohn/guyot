@@ -145,7 +145,7 @@ export class Repo {
       const record = buildRecord(newId(), data as Obj, stamp, mapFieldsOf(table))
       await save(tx, table, record, ctx)
       const keys = Object.keys(record.fieldMeta)
-      await this.logChange(tx, ctx, table, record.id, 'create', keys, {}, at, options)
+      await this.logChange(tx, ctx, table, record, 'create', keys, {}, at, options)
       return record as unknown as Live<T>
     })
   }
@@ -195,9 +195,10 @@ export class Repo {
       const old = await load(tx, table, id)
       if (!old.deleted) throw new Error('Delete the record before removing it permanently.')
       const at = this.clock()
-      await save(tx, table, tombstoneOf(old, this.deviceId, at), ctx)
+      const tombstone = tombstoneOf(old, this.deviceId, at)
+      await save(tx, table, tombstone, ctx)
       await this.scrubLogs(tx, ctx, id, at)
-      await this.logChange(tx, ctx, table, id, 'purge', [], {}, at, options)
+      await this.logChange(tx, ctx, table, tombstone, 'purge', [], {}, at, options)
     })
   }
 
@@ -241,6 +242,70 @@ export class Repo {
       await request(store.put({ ...meta, nextRoleNumber: meta.nextRoleNumber + 1 }, META_KEY))
       return roleId
     })
+  }
+
+  // ---------- Undo and conflicts ----------
+
+  /**
+   * Undoes one logged change by putting back its old values, as a new (undoable) edit.
+   * A field is undone only if it still has the exact stamp this change wrote; anything
+   * that touched it since (on any device) gives it a different stamp, so it is left
+   * alone and returned in `skipped`. No clocks are compared, so a wrong clock can't
+   * make undo overwrite newer work. Undoing a creation deletes the record (it stays in
+   * "recently deleted"). A permanent removal cannot be undone.
+   */
+  async undo(changeId: Uuid, options: WriteOptions = {}): Promise<{ skipped: string[] }> {
+    return this.write(async (tx, ctx) => {
+      const entry = (await load(tx, 'changeLog', changeId)) as Stored & ChangeLogData
+      if (entry.action === 'purge') throw new Error('A permanent removal cannot be undone.')
+      const table = entry.table as DataTable
+      const record = await load(tx, table, entry.recordId)
+
+      const unchangedSince = (key: string) => {
+        const written = entry.stamps[key]
+        const current = record.fieldMeta[key]
+        return written !== undefined && current !== undefined && sameStamp(written, current)
+      }
+      const skipped = entry.fieldKeys.filter((key) => !unchangedSince(key))
+      const keys = entry.fieldKeys.filter(unchangedSince)
+
+      // A change that touched `deleted` without an old value created the record.
+      const created = entry.fieldKeys.includes('deleted') && !Object.hasOwn(entry.before, 'deleted')
+      if (created) {
+        if (keys.includes('deleted')) {
+          await this.change(tx, ctx, table, record.id, { deleted: true }, 'undo', options)
+        }
+        return { skipped }
+      }
+
+      let changes: Obj = {}
+      for (const key of keys) {
+        const old = Object.hasOwn(entry.before, key) ? entry.before[key] : undefined
+        changes = withField(record, changes, key, old)
+      }
+      await this.change(tx, ctx, table, record.id, changes, 'undo', options)
+      return { skipped }
+    })
+  }
+
+  /** Puts a conflict's losing value back as a new edit, and marks the conflict resolved. */
+  async restoreConflict(conflictId: Uuid, options: WriteOptions = {}): Promise<void> {
+    await this.write(async (tx, ctx) => {
+      const conflict = (await load(tx, 'conflictLog', conflictId)) as Stored & ConflictLogData
+      if (conflict.resolved) throw new Error('This conflict was already resolved.')
+      const table = conflict.table as DataTable
+      const record = await load(tx, table, conflict.recordId)
+      const changes = withField(record, {}, conflict.fieldKey, conflict.losingValue)
+      await this.change(tx, ctx, table, record.id, changes, 'update', options)
+      await this.change(tx, ctx, 'conflictLog', conflictId, { resolved: true }, 'update', options)
+    })
+  }
+
+  /** Keeps the winning value and marks the conflict resolved. */
+  async dismissConflict(conflictId: Uuid, options: WriteOptions = {}): Promise<void> {
+    await this.write((tx, ctx) =>
+      this.change(tx, ctx, 'conflictLog', conflictId, { resolved: true }, 'update', options),
+    )
   }
 
   // ---------- Merging (import now, sync later) ----------
@@ -354,11 +419,11 @@ export class Repo {
     if (!LOG_TABLES.includes(table)) {
       if (merged.purged) {
         if (!local?.purged) await this.scrubLogs(tx, ctx, remote.id, at)
-        await this.logChange(tx, ctx, table, remote.id, 'import', [], {}, at, options)
+        await this.logChange(tx, ctx, table, merged, 'import', [], {}, at, options)
       } else {
         const keys = changedKeys(local, merged)
         const before = local ? valuesOf(local, keys) : {}
-        await this.logChange(tx, ctx, table, remote.id, 'import', keys, before, at, options)
+        await this.logChange(tx, ctx, table, merged, 'import', keys, before, at, options)
       }
     }
     return { record: merged as unknown as RecordOf<T>, changed, conflicts }
@@ -432,7 +497,7 @@ export class Repo {
     )
     if (keys.length === 0) return old
     await save(tx, table, next, ctx)
-    await this.logChange(tx, ctx, table, id, action, keys, before, at, options)
+    await this.logChange(tx, ctx, table, next, action, keys, before, at, options)
     return next
   }
 
@@ -440,7 +505,7 @@ export class Repo {
     tx: IDBTransaction,
     ctx: ValidationContext,
     table: TableName,
-    recordId: Uuid,
+    record: Stored, // the record as saved by this change
     action: ChangeAction,
     fieldKeys: string[],
     before: Record<string, JsonValue>,
@@ -448,11 +513,15 @@ export class Repo {
     options: WriteOptions,
   ): Promise<void> {
     if (LOG_TABLES.includes(table)) return
+    // The exact stamps this change wrote. Undo compares them with the current stamps.
+    const stamps: FieldMeta = {}
+    for (const key of fieldKeys) stamps[key] = record.fieldMeta[key]
     const data: ChangeLogData = {
       table,
-      recordId,
+      recordId: record.id,
       action,
       fieldKeys,
+      stamps,
       before,
       appliedBy: options.appliedBy ?? 'user',
       stageId: options.stageId ?? null,
@@ -571,6 +640,25 @@ function scrubbed(table: TableName, entry: Stored, deviceId: DeviceId, at: Momen
   if (table === 'conflictLog') return tombstoneOf(entry, deviceId, at)
   if (Object.keys(entry.before as Obj).length === 0) return entry
   return applyChanges(entry, { before: {} }, [], deviceId, at, false).next
+}
+
+/**
+ * Adds one field change, by fieldMeta key, to `changes`. For a map entry
+ * ('custom.<id>'), builds the whole new map; a value of undefined removes the entry.
+ */
+function withField(record: Stored, changes: Obj, key: string, value: unknown): Obj {
+  const dot = key.indexOf('.')
+  if (dot === -1) {
+    if (value !== undefined) changes[key] = structuredClone(value)
+    return changes
+  }
+  const [top, entry] = [key.slice(0, dot), key.slice(dot + 1)]
+  const current = changes[top]
+  const map: Obj = isObj(current) ? current : isObj(record[top]) ? structuredClone(record[top]) : {}
+  if (value === undefined) delete map[entry]
+  else map[entry] = structuredClone(value)
+  changes[top] = map
+  return changes
 }
 
 function isObj(value: unknown): value is Obj {

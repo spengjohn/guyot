@@ -281,6 +281,7 @@ const CHANGE_ACTIONS: Record<ChangeAction, true> = {
   purge: true,
   import: true,
   renumber: true,
+  undo: true,
 }
 
 // The mapped type `{ [T in TableName]: ... }` requires a schema for every table.
@@ -388,6 +389,14 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
       recordId: uuid,
       action: oneOf(CHANGE_ACTIONS),
       fieldKeys: arrayOf(shortText, 10_000),
+      stamps: (v, path) => {
+        if (!isObj(v)) return [`${path}: expected an object`]
+        return Object.entries(v).flatMap(([key, stamp]) =>
+          FORBIDDEN_KEYS.has(key)
+            ? [`${path}: forbidden key`]
+            : fieldStamp(stamp, `${path}.${key}`),
+        )
+      },
       before: (v, path) => (isObj(v) ? json()(v, path) : [`${path}: expected an object`]),
       appliedBy: oneOf({ user: true, ai: true, import: true }),
       stageId: nullable(uuid),

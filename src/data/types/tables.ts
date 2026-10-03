@@ -88,7 +88,7 @@ export interface ConflictLogData {
 }
 
 export type ChangeAction =
-  'create' | 'update' | 'delete' | 'restore' | 'purge' | 'import' | 'renumber'
+  'create' | 'update' | 'delete' | 'restore' | 'purge' | 'import' | 'renumber' | 'undo'
 
 /** Purging a record also clears its `before` values here and its conflict log entries. */
 export interface ChangeLogData {
@@ -96,6 +96,7 @@ export interface ChangeLogData {
   recordId: Uuid
   action: ChangeAction
   fieldKeys: string[] // every field this change touched, using fieldMeta keys
+  stamps: Record<string, FieldStamp> // the exact stamp written on each touched field, for undo
   before: Record<string, JsonValue> // old value of each touched field; absent if it didn't exist
   appliedBy: 'user' | 'ai' | 'import'
   stageId: Uuid | null // set when appliedBy is 'ai'
