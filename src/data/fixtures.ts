@@ -3,7 +3,14 @@ import { SCHEMA_VERSION, TABLE_NAMES } from './constants'
 import { compareStamps, stampEdit } from './stamp'
 import type { CalendarDay, ChoiceId, DeviceId, Moment, RoleId, Uuid } from './types/core'
 import type { FieldMeta, FieldStamp, LiveRecord, Tombstone } from './types/record'
-import type { ApplicationData, ExportFile, PostingData, TableName } from './types/tables'
+import type {
+  ApplicationData,
+  ExportFile,
+  GoalData,
+  PostingData,
+  SearchProfileData,
+  TableName,
+} from './types/tables'
 
 export { emptySharedTargets } from './defaults'
 
@@ -15,7 +22,7 @@ export function at(hour: number, minute = 0): Moment {
   return Date.UTC(2026, 9, 3, hour, minute) as Moment
 }
 
-const MAP_FIELDS = new Set(['custom', 'overrides', 'choices'])
+const MAP_FIELDS = new Set(['custom', 'overrides', 'customOverrides', 'choices'])
 
 /** A live record with every field (and every map entry) stamped with `stamp`. */
 export function makeRecord<D extends object>(id: Uuid, data: D, stamp: FieldStamp): LiveRecord<D> {
@@ -106,9 +113,39 @@ export function sampleApplication(): ApplicationData {
     resumeVersionId: null,
     contact: '',
     notes: '',
-    deadline: { kind: 'day', day: '2026-10-15' as CalendarDay },
     nextFollowUp: null,
     custom: {},
+  }
+}
+
+export function sampleProfile(): SearchProfileData {
+  return {
+    name: 'Frontend, remote',
+    term: 'Full time',
+    employmentTypes: [],
+    locations: ['Remote'],
+    workModes: [],
+    minimumPay: null,
+    priority: null,
+    active: true,
+    notes: '',
+    overrides: {},
+    customOverrides: {},
+    custom: {},
+  }
+}
+
+export function sampleGoal(): GoalData {
+  return {
+    name: 'Ten a week',
+    measure: 'applicationsSent',
+    target: 10,
+    period: 'week',
+    weekStartsOn: 'monday',
+    startDay: '2026-10-05' as CalendarDay,
+    endDay: null,
+    active: true,
+    notes: '',
   }
 }
 

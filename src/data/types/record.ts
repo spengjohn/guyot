@@ -14,7 +14,8 @@ export interface FieldStamp extends StampRef {
 
 /**
  * One stamp per field. Key is a built-in field name ('company'), 'deleted',
- * or a dotted path for map entries: 'custom.<fieldId>', 'overrides.<key>', 'choices.<choiceId>'.
+ * or a dotted path for map entries: 'custom.<fieldId>', 'overrides.<key>',
+ * 'customOverrides.<fieldId>', 'choices.<choiceId>'.
  */
 export type FieldMeta = Record<string, FieldStamp>
 

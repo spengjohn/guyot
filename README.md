@@ -17,7 +17,7 @@ You choose where your data lives and which AI (if any) helps. Guyot works fully 
 
 ## Status
 
-Early development. The data layer (build step 1) is done; the user interface is next. See [docs/status.md](docs/status.md).
+Early development. The data layer (build step 1) and the Applications tracker (step 2a) are done; the Targets screen is next. See [docs/status.md](docs/status.md).
 
 ## Development
 
@@ -39,5 +39,5 @@ Before considering a change done, run `npm run lint`, `npm run format:check`, `n
 - [docs/status.md](docs/status.md): what's built, what's deferred and what's next
 - [docs/data-layer.md](docs/data-layer.md): how storage, merging and validation fit together
 - [docs/decisions/](docs/decisions/): why the design is the way it is, one record per decision
-- [docs/typescript-notes.md](docs/typescript-notes.md): TypeScript concepts used in this codebase
+- [docs/typescript-notes.md](docs/typescript-notes.md): TypeScript and React concepts used in this codebase
 - [CLAUDE.md](CLAUDE.md): the full project specification and rules

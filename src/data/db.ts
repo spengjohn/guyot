@@ -6,7 +6,7 @@ export const DB_NAME = 'guyot'
  * Version of the database layout (stores and indexes). Separate from the record
  * schemaVersion. Bump it only when adding stores or indexes, in onupgradeneeded below.
  */
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 /** Local-only stores. Never synced or exported. */
 export const META_STORE = 'meta'
@@ -18,7 +18,9 @@ export function openDatabase(name: string = DB_NAME): Promise<IDBDatabase> {
     const req = indexedDB.open(name, DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
-      // Version 1: every store. Later versions add steps here; existing data is kept.
+      // Creates any store that's missing, so every older version catches up and
+      // existing stores (and their data) are left alone.
+      // Version 1: every store. Version 2: goals.
       for (const table of TABLE_NAMES) {
         if (db.objectStoreNames.contains(table)) continue
         const store = db.createObjectStore(table, { keyPath: 'id' })

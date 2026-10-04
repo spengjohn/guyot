@@ -1,14 +1,25 @@
 import 'fake-indexeddb/auto' // puts an in-memory IndexedDB on the global object
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SHARED_TARGETS_ID } from './constants'
-import { PHONE, at, editField, emptySharedTargets, makeRecord, sampleApplication } from './fixtures'
+import {
+  PHONE,
+  at,
+  editField,
+  emptySharedTargets,
+  makeRecord,
+  sampleApplication,
+  sampleGoal,
+  sampleProfile,
+} from './fixtures'
+import { exportData } from './exportImport'
 import { deterministicId } from './ids'
-import { Repo, ValidationError } from './repo'
+import { Repo, StaleEditError, ValidationError } from './repo'
 import { defaultStamp, stampEdit } from './stamp'
-import type { Moment, Uuid } from './types/core'
+import type { CalendarDay, Moment, Uuid } from './types/core'
 import type { ApplicationData } from './types/tables'
 
 const FIELD = '44444444-4444-4444-8444-444444444444' as Uuid
+const OTHER_FIELD = '99999999-9999-4999-8999-999999999999' as Uuid
 
 let time: Moment
 let repo: Repo
@@ -112,6 +123,61 @@ describe('update', () => {
     expect(cleared.fieldMeta[`custom.${FIELD}`].updatedAt).toBe(at(16)) // removal is stamped
   })
 
+  it('refuses a stale edit and saves nothing (expected stamps)', async () => {
+    const opened = await createApplication() // a form opens on this version
+    time = at(15)
+    await repo.update('applications', opened.id, { notes: 'Tab A' }) // another tab saves
+    time = at(16)
+    const stale = repo.update(
+      'applications',
+      opened.id,
+      { notes: 'Tab B', contact: 'Sam' },
+      { expected: { notes: opened.fieldMeta.notes, contact: opened.fieldMeta.contact } },
+    )
+    await expect(stale).rejects.toBeInstanceOf(StaleEditError)
+    await expect(stale).rejects.toMatchObject({ fieldKeys: ['notes'] })
+    const after = await repo.get('applications', opened.id)
+    expect(after).toMatchObject({ notes: 'Tab A', contact: '' }) // not even contact was saved
+  })
+
+  it('saves when the expected stamps still match, and when choosing to overwrite', async () => {
+    const opened = await createApplication()
+    time = at(15)
+    const tabA = await repo.update('applications', opened.id, { notes: 'Tab A' })
+    time = at(16)
+    // The user saw Tab A's value and chose to keep their own: expect Tab A's stamp.
+    const saved = await repo.update(
+      'applications',
+      opened.id,
+      { notes: 'Tab B' },
+      { expected: { notes: tabA.fieldMeta.notes } },
+    )
+    expect(saved.notes).toBe('Tab B')
+  })
+
+  it('treats a touched field missing from the expected stamps as stale', async () => {
+    const opened = await createApplication()
+    await expect(
+      repo.update('applications', opened.id, { notes: 'x' }, { expected: {} }),
+    ).rejects.toMatchObject({ fieldKeys: ['notes'] })
+    // null means "must have no stamp yet": true for a custom value never set.
+    const withCustom = await repo.update(
+      'applications',
+      opened.id,
+      { custom: { [FIELD]: 'x' } },
+      { expected: { [`custom.${FIELD}`]: null } },
+    )
+    expect(withCustom.custom[FIELD]).toBe('x')
+    await expect(
+      repo.update(
+        'applications',
+        opened.id,
+        { custom: { [FIELD]: 'y' } },
+        { expected: { [`custom.${FIELD}`]: null } },
+      ),
+    ).rejects.toBeInstanceOf(StaleEditError)
+  })
+
   it('stays newer than the old value when the clock goes backwards', async () => {
     const created = await createApplication()
     time = at(9) // clock was moved back
@@ -127,6 +193,15 @@ describe('delete, restore and purge', () => {
     expect(await repo.list('applications')).toEqual([])
     expect((await repo.listDeleted('applications')).map((r) => r.id)).toEqual([created.id])
     await repo.restore('applications', created.id)
+    expect((await repo.list('applications')).map((r) => r.id)).toEqual([created.id])
+  })
+
+  it('returns the change ID, so a delete can be undone', async () => {
+    const created = await createApplication()
+    const changeId = await repo.delete('applications', created.id)
+    expect(changeId).not.toBeNull()
+    expect(await repo.delete('applications', created.id)).toBeNull() // already deleted
+    expect(await repo.undo(changeId!)).toEqual({ skipped: [] })
     expect((await repo.list('applications')).map((r) => r.id)).toEqual([created.id])
   })
 
@@ -183,6 +258,98 @@ describe('shared targets', () => {
   })
 })
 
+describe('search profile overrides', () => {
+  it("keeps each device's custom override, one stamp per field", async () => {
+    const created = await repo.create('searchProfiles', sampleProfile())
+    time = at(15)
+    await repo.update('searchProfiles', created.id, { customOverrides: { [FIELD]: true } })
+    const phone = editField(created, `customOverrides.${OTHER_FIELD}`, 'x', PHONE, at(15, 30))
+    await repo.saveMerged('searchProfiles', phone)
+    const merged = await repo.get('searchProfiles', created.id)
+    expect(merged && !merged.purged && merged.customOverrides).toEqual({
+      [FIELD]: true,
+      [OTHER_FIELD]: 'x',
+    })
+    expect(await repo.list('conflictLog')).toEqual([])
+  })
+
+  it("never pairs one device's mode with another device's items", async () => {
+    const created = await repo.create('searchProfiles', {
+      ...sampleProfile(),
+      overrides: { roleTypes: { mode: 'add', items: ['UX'] } },
+    })
+    time = at(16)
+    // Laptop changes the items; the phone, earlier and unaware, changed the mode.
+    await repo.update('searchProfiles', created.id, {
+      overrides: { roleTypes: { mode: 'add', items: ['UX', 'Research'] } },
+    })
+    const phone = editField(
+      created,
+      'overrides.roleTypes',
+      { mode: 'replace', items: ['UX'] },
+      PHONE,
+      at(15),
+    )
+    await repo.saveMerged('searchProfiles', phone)
+    const merged = await repo.get('searchProfiles', created.id)
+    expect(merged && !merged.purged && merged.overrides.roleTypes).toEqual({
+      mode: 'add',
+      items: ['UX', 'Research'],
+    })
+    const [conflict] = await repo.list('conflictLog')
+    expect(conflict).toMatchObject({
+      fieldKey: 'overrides.roleTypes',
+      losingValue: { mode: 'replace', items: ['UX'] }, // the whole losing value, kept for review
+    })
+  })
+})
+
+describe('goals', () => {
+  it('can be created, edited, deleted and restored', async () => {
+    const goal = await repo.create('goals', sampleGoal())
+    time = at(15)
+    const edited = await repo.update('goals', goal.id, { target: 12 })
+    expect(edited.target).toBe(12)
+    await repo.delete('goals', goal.id)
+    expect(await repo.list('goals')).toEqual([])
+    await repo.restore('goals', goal.id)
+    expect((await repo.list('goals')).map((g) => g.target)).toEqual([12])
+  })
+
+  it('rejects an invalid goal', async () => {
+    await expect(
+      repo.create('goals', { ...sampleGoal(), endDay: '2026-10-01' as CalendarDay }),
+    ).rejects.toThrow(/before the start day/)
+  })
+})
+
+describe('local settings', () => {
+  const layout = {
+    scope: { table: 'applications' as const },
+    order: ['company', 'role'],
+    hidden: ['role'],
+  }
+
+  it('starts empty, then keeps what was saved across restarts', async () => {
+    expect(await repo.getLocalSettings()).toEqual({ columnLayouts: [] })
+    await repo.saveLocalSettings({ columnLayouts: [layout] })
+    repo.close()
+    repo = await Repo.open({ name: dbName })
+    expect(await repo.getLocalSettings()).toEqual({ columnLayouts: [layout] })
+  })
+
+  it('refuses to save damaged settings', async () => {
+    const bad = { columnLayouts: [{ ...layout, hidden: 'role' }] } as never
+    await expect(repo.saveLocalSettings(bad)).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('are not exported or synced', async () => {
+    await repo.saveLocalSettings({ columnLayouts: [layout] })
+    const file = await exportData(repo)
+    expect(JSON.stringify(file)).not.toContain('columnLayouts')
+  })
+})
+
 describe('Role IDs', () => {
   it('counts up and survives restarts', async () => {
     expect(await repo.nextRoleId()).toBe('R001')
@@ -190,6 +357,17 @@ describe('Role IDs', () => {
     repo.close()
     repo = await Repo.open({ name: dbName })
     expect(await repo.nextRoleId()).toBe('R003')
+  })
+
+  it('assigns a Role ID on create, using no number if the create fails', async () => {
+    const invalid = { ...sampleApplication(), listing: 'not a link' }
+    await expect(repo.create('applications', invalid, { assignRoleId: true })).rejects.toThrow()
+    const created = await repo.create('applications', sampleApplication(), { assignRoleId: true })
+    expect(created.roleId).toBe('R001')
+    expect(await repo.nextRoleId()).toBe('R002')
+    await expect(repo.create('goals', sampleGoal(), { assignRoleId: true })).rejects.toThrow(
+      /no Role ID/,
+    )
   })
 
   it('skips past Role IDs that arrive from other devices', async () => {

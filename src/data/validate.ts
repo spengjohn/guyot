@@ -1,7 +1,23 @@
 import { LIMITS, SCHEMA_VERSION, SHARED_TARGETS_ID, TABLE_NAMES, TABLE_SET } from './constants'
+import { STATUS_CHOICES } from './builtinFields'
 import { isCalendarDay, isTimeZone } from './time'
-import type { CustomFieldType, FieldDefinitionData, FieldType, PayPeriod } from './types/fields'
-import type { ChangeAction, ExportFile, SharedTargetsFields, TableName } from './types/tables'
+import type {
+  ChoiceOption,
+  CustomFieldType,
+  FieldDefinitionData,
+  FieldType,
+  PayPeriod,
+} from './types/fields'
+import type {
+  ChangeAction,
+  ExportFile,
+  GoalMeasure,
+  GoalPeriod,
+  ListMode,
+  SharedTargetsFields,
+  TableName,
+  Weekday,
+} from './types/tables'
 
 /** What validation found. Errors block saving; warnings are kept and shown as flags. */
 export interface Report {
@@ -103,6 +119,15 @@ const longText = text(LIMITS.longText)
 const postingText = text(LIMITS.postingText)
 const textList = arrayOf(shortText)
 const choiceList = arrayOf(choiceId)
+
+/**
+ * One of a built-in field's fixed options. Hidden (retired) options stay valid, so old
+ * values still pass. Anything else is an error, not a warning: see docs/decisions/0013.
+ */
+function builtinChoice(label: string, choices: Readonly<Record<string, ChoiceOption>>): Check {
+  return (v, path) =>
+    typeof v === 'string' && Object.hasOwn(choices, v) ? [] : [`${path}: not a ${label} option`]
+}
 
 const calendarDay: Check = (v, path) =>
   typeof v === 'string' && isCalendarDay(v) ? [] : [`${path}: expected a date (YYYY-MM-DD)`]
@@ -226,32 +251,88 @@ const SHARED_TARGET_CHECKS: Record<keyof SharedTargetsFields, Check> = {
   preferredSources: textList,
 }
 
+const LIST_MODES: Record<ListMode, true> = { add: true, replace: true }
+const listOverride = shape({ mode: oneOf(LIST_MODES), items: textList })
+
+/** What a profile may store to override each shared field. Lists carry a mode (docs/decisions/0012). */
+const OVERRIDE_CHECKS: Record<keyof SharedTargetsFields, Check> = {
+  roleTypes: listOverride,
+  industries: listOverride,
+  prioritizeCompanies: listOverride,
+  excludeCompanies: listOverride,
+  excludeRule: longText,
+  mustHaveKeywords: listOverride,
+  niceToHaveKeywords: listOverride,
+  dealbreakers: listOverride,
+  eligibilityNotes: longText,
+  preferredSources: listOverride,
+}
+
+/**
+ * Checks one value for a custom field. A value for an unknown field is kept and
+ * flagged, never dropped (integrity rule 5). Returns the field's definition if known.
+ */
+function checkCustomValue(
+  key: string,
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  out: Report,
+): FieldDefinitionData | undefined {
+  const def = ctx.customFields.get(key)
+  if (!def) {
+    out.warnings.push(`${path}: value for an unknown custom field (kept)`)
+    out.errors.push(...json()(value, path))
+    return undefined
+  }
+  out.errors.push(...checkFieldValue(def.type, value, path))
+  if (def.type === 'choice' && typeof value === 'string' && !Object.hasOwn(def.choices, value)) {
+    out.warnings.push(`${path}: unknown choice option (kept)`)
+  }
+  return def
+}
+
 const customMap: MapSpec = {
   optional: false,
   key: uuid,
   entry: (key, value, path, ctx, out) => {
-    const def = ctx.customFields.get(key)
-    if (!def) {
-      out.warnings.push(`${path}: value for an unknown custom field (kept)`)
-      out.errors.push(...json()(value, path))
-      return
-    }
-    out.errors.push(...checkFieldValue(def.type, value, path))
-    if (def.type === 'choice' && typeof value === 'string' && !Object.hasOwn(def.choices, value)) {
-      out.warnings.push(`${path}: unknown choice option (kept)`)
-    }
+    checkCustomValue(key, value, path, ctx, out)
   },
 }
 
 const overridesMap: MapSpec = {
   optional: false,
   key: (v, path) =>
-    typeof v === 'string' && Object.hasOwn(SHARED_TARGET_CHECKS, v)
+    typeof v === 'string' && Object.hasOwn(OVERRIDE_CHECKS, v)
       ? []
       : [`${path}: not a shared target field`],
   entry: (key, value, path, _ctx, out) => {
-    out.errors.push(...SHARED_TARGET_CHECKS[key as keyof SharedTargetsFields](value, path))
+    out.errors.push(...OVERRIDE_CHECKS[key as keyof SharedTargetsFields](value, path))
   },
+}
+
+/** Overrides of custom shared-target fields, keyed by field ID. */
+const customOverridesMap: MapSpec = {
+  optional: false,
+  key: uuid,
+  entry: (key, value, path, ctx, out) => {
+    const def = checkCustomValue(key, value, path, ctx, out)
+    if (def && def.scope.table !== 'sharedTargets') {
+      out.warnings.push(`${path}: overrides a field that is not a shared target (kept)`)
+    }
+  },
+}
+
+const GOAL_MEASURES: Record<GoalMeasure, true> = { applicationsSent: true }
+const GOAL_PERIODS: Record<GoalPeriod, true> = { week: true, month: true }
+const WEEKDAYS: Record<Weekday, true> = {
+  monday: true,
+  tuesday: true,
+  wednesday: true,
+  thursday: true,
+  friday: true,
+  saturday: true,
+  sunday: true,
 }
 
 const choiceOption: Check = shape({ label: shortText, order: num({ integer: true }), hidden: bool })
@@ -301,9 +382,30 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
       active: bool,
       notes: longText,
     },
-    maps: { custom: customMap, overrides: overridesMap },
+    maps: { custom: customMap, overrides: overridesMap, customOverrides: customOverridesMap },
   },
   sharedTargets: { fields: SHARED_TARGET_CHECKS, maps: { custom: customMap } },
+  goals: {
+    fields: {
+      name: shortText,
+      measure: oneOf(GOAL_MEASURES),
+      target: num({ integer: true, min: 1 }),
+      period: oneOf(GOAL_PERIODS),
+      weekStartsOn: oneOf(WEEKDAYS),
+      startDay: calendarDay,
+      endDay: nullable(calendarDay),
+      active: bool,
+      notes: longText,
+    },
+    maps: {},
+    // 'YYYY-MM-DD' strings sort the same way as the days they name.
+    refine: (data, path) =>
+      typeof data.endDay === 'string' &&
+      typeof data.startDay === 'string' &&
+      data.endDay < data.startDay
+        ? [`${path}.endDay: before the start day`]
+        : [],
+  },
   postings: {
     fields: {
       roleId,
@@ -330,11 +432,10 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
       jdSnapshotId: nullable(uuid),
       company: shortText,
       role: shortText,
-      status: choiceId,
+      status: builtinChoice('Status', STATUS_CHOICES),
       resumeVersionId: nullable(uuid),
       contact: shortText,
       notes: longText,
-      deadline: nullable(deadline),
       nextFollowUp: nullable(calendarDay),
     },
     maps: { custom: customMap },
@@ -514,6 +615,18 @@ export function validateRecord(
       out.errors.push(`${path}.updatedAt: must match the newest field stamp`)
   }
   return out
+}
+
+// ---------- Local settings ----------
+
+const columnKeys = arrayOf(shortText, 1_000) // built-in keys and custom field IDs
+const localSettings = shape({
+  columnLayouts: arrayOf(shape({ scope: fieldScope, order: columnKeys, hidden: columnKeys }), 100),
+})
+
+/** Checks this device's settings (local only, never synced). Returns the problems found. */
+export function validateLocalSettings(value: unknown): string[] {
+  return localSettings(value, 'settings')
 }
 
 // ---------- Export files ----------

@@ -5,6 +5,7 @@ import type { TableName } from './types/tables'
 export const TABLE_SET: Record<TableName, true> = {
   searchProfiles: true,
   sharedTargets: true,
+  goals: true,
   postings: true,
   stageRows: true,
   applications: true,
@@ -30,8 +31,11 @@ export const ROLE_ID_TABLES: readonly TableName[] = [
 /** Tables the app writes itself. They are never edited directly or logged. */
 export const LOG_TABLES: readonly TableName[] = ['changeLog', 'conflictLog']
 
-/** Version of the record format. Bump only with a migration in migrate.ts. */
-export const SCHEMA_VERSION = 1
+/**
+ * Version of the record format. Bump only with a migration in migrate.ts.
+ * 2: list overrides became { mode, items }; profiles gained customOverrides; goals table.
+ */
+export const SCHEMA_VERSION = 2
 
 /**
  * Fixed ID for the one shared-targets record, so every device creates the same record.

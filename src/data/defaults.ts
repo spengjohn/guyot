@@ -1,4 +1,4 @@
-import type { SharedTargetsData } from './types/tables'
+import type { LocalSettings, SharedTargetsData } from './types/tables'
 
 /** Starting values for the shared-targets record. Stamped as defaults, so they never beat real edits. */
 export function emptySharedTargets(): SharedTargetsData {
@@ -15,4 +15,9 @@ export function emptySharedTargets(): SharedTargetsData {
     preferredSources: [],
     custom: {},
   }
+}
+
+/** This device's settings before anything is chosen: every table uses its default layout. */
+export function emptyLocalSettings(): LocalSettings {
+  return { columnLayouts: [] }
 }

@@ -8,7 +8,7 @@ import type {
   RoleId,
   Uuid,
 } from './core'
-import type { ColumnLayout, Deadline, FieldDefinitionData, FieldValue, Money } from './fields'
+import type { ColumnLayout, FieldDefinitionData, FieldValue, Money } from './fields'
 import type { FieldStamp, StoredRecord } from './record'
 
 interface HasCustom {
@@ -29,6 +29,25 @@ export interface SharedTargetsFields {
 }
 export interface SharedTargetsData extends SharedTargetsFields, HasCustom {}
 
+/** How a profile's list override combines with the shared list. */
+export type ListMode = 'add' | 'replace'
+
+/**
+ * A profile's override of a shared list. Mode and items are one value with one stamp,
+ * so a merge can never pair one device's mode with another device's items (docs/decisions/0012).
+ */
+export interface ListOverride {
+  mode: ListMode
+  items: string[]
+}
+
+/** For each shared field: lists take a ListOverride; other fields take their own type. */
+export type SharedTargetOverrides = {
+  [K in keyof SharedTargetsFields]?: SharedTargetsFields[K] extends string[]
+    ? ListOverride
+    : SharedTargetsFields[K]
+}
+
 export interface SearchProfileData extends HasCustom {
   name: string
   term: string
@@ -39,7 +58,27 @@ export interface SearchProfileData extends HasCustom {
   priority: ChoiceId | null // 'high' | 'medium' | 'low'
   active: boolean
   notes: string
-  overrides: Partial<SharedTargetsFields> // the profile's value wins where set
+  overrides: SharedTargetOverrides // the profile's value wins where set
+  /** Overrides of custom shared-target fields, keyed by field ID. null overrides to empty. */
+  customOverrides: Record<FieldId, FieldValue>
+}
+
+export type GoalMeasure = 'applicationsSent' // counted by Date Applied
+export type GoalPeriod = 'week' | 'month'
+export type Weekday =
+  'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday'
+
+/** A goal for the dashboard. Progress is computed from applications, never stored. */
+export interface GoalData {
+  name: string
+  measure: GoalMeasure
+  target: number // whole number, at least 1
+  period: GoalPeriod
+  weekStartsOn: Weekday // stored on the goal so every device counts the same days
+  startDay: CalendarDay
+  endDay: CalendarDay | null // not before startDay
+  active: boolean
+  notes: string
 }
 
 export interface PostingData extends HasCustom {
@@ -65,7 +104,6 @@ export interface ApplicationData extends HasCustom {
   resumeVersionId: Uuid | null
   contact: string
   notes: string
-  deadline: Deadline | null
   nextFollowUp: CalendarDay | null
 }
 
@@ -127,6 +165,7 @@ export interface StageInstructionData {
 export interface Tables {
   searchProfiles: SearchProfileData
   sharedTargets: SharedTargetsData
+  goals: GoalData
   postings: PostingData
   stageRows: StageRowData
   applications: ApplicationData

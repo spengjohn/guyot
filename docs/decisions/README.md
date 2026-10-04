@@ -15,6 +15,9 @@ Each record explains one design decision: the problem, what we chose, what we re
 | [0009](0009-all-or-nothing-import.md)         | Imports run in one transaction                            |
 | [0010](0010-hand-written-validation.md)       | Validation is hand-written, not a schema library          |
 | [0011](0011-role-id-collisions.md)            | Role ID collisions are renumbered deterministically       |
+| [0012](0012-profile-overrides.md)             | Profile overrides: list mode and items are one value      |
+| [0013](0013-fixed-builtin-choices.md)         | Built-in choice options are fixed, and checked strictly   |
+| [0014](0014-stale-edit-check.md)              | Saves are refused if a field changed since editing began  |
 
 ## Adding a record
 

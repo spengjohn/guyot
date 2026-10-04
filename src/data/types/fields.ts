@@ -15,7 +15,10 @@ export interface Money {
   currency: string // ISO 4217 code, e.g. 'USD'
 }
 
-/** A deadline is either a plain day or a time in the posting's zone. */
+/**
+ * A deadline is either a plain day or a time in the posting's zone. Used by postings
+ * found in Discover; Applications have no deadline.
+ */
 export type Deadline = { kind: 'day'; day: CalendarDay } | { kind: 'time'; at: ZonedMoment }
 
 /** The stored value for each field type. */
@@ -62,9 +65,10 @@ export interface BuiltinField {
   key: string
   label: string
   type: FieldType
-  required: boolean
+  required: boolean // must be filled in when entering data in a form; not enforced on stored records
+  readOnly?: boolean // set by the app (Role ID) or by a later step's screen
   maxLength?: number
-  choices?: Readonly<Record<ChoiceId, ChoiceOption>> // fixed IDs, e.g. status 'applied'
+  choices?: Readonly<Record<string, ChoiceOption>> // fixed IDs, e.g. status 'applied'
 }
 
 /** Per-device column layout. Stored in local settings, never synced. */

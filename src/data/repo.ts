@@ -6,27 +6,41 @@ import {
   TABLE_NAMES,
 } from './constants'
 import { getBackup, listBackups, type Backup, type BackupInfo } from './backup'
-import { META_STORE, openDatabase, request, transactionDone } from './db'
+import { META_STORE, openDatabase, request, SETTINGS_STORE, transactionDone } from './db'
 import { migrateDatabase, type Migrations } from './migrate'
-import { emptySharedTargets } from './defaults'
+import { emptyLocalSettings, emptySharedTargets } from './defaults'
 import { deterministicId, formatRoleId, newId, roleNumber } from './ids'
 import { getValue, jsonEqual, mergeRecords, type ConflictDraft } from './merge'
 import { compareStamps, defaultStamp, sameStamp, stampEdit } from './stamp'
 import { now } from './time'
 import type { DeviceId, JsonValue, Moment, RoleId, Uuid } from './types/core'
 import type { FieldDefinitionData } from './types/fields'
-import type { FieldMeta, FieldStamp, LiveRecord, StoredRecord, SyncFields } from './types/record'
+import type {
+  FieldMeta,
+  FieldStamp,
+  LiveRecord,
+  StampRef,
+  StoredRecord,
+  SyncFields,
+} from './types/record'
 import type {
   ChangeAction,
   ChangeLogData,
   ConflictLogData,
+  LocalSettings,
   Meta,
   RecordOf,
   SharedTargetsData,
   TableName,
   Tables,
 } from './types/tables'
-import { mapFieldsOf, SYNC_KEYS, validateRecord, type ValidationContext } from './validate'
+import {
+  mapFieldsOf,
+  SYNC_KEYS,
+  validateLocalSettings,
+  validateRecord,
+  type ValidationContext,
+} from './validate'
 
 /** Tables the user edits directly: everything except the two logs. */
 export type DataTable = Exclude<TableName, 'changeLog' | 'conflictLog'>
@@ -61,11 +75,31 @@ export class ValidationError extends Error {
   }
 }
 
+/**
+ * Thrown when an update says which stamps it expects and a field has changed since
+ * (in another tab, or merged from another device). Nothing is saved. See docs/decisions/0014.
+ */
+export class StaleEditError extends Error {
+  readonly fieldKeys: string[]
+  constructor(fieldKeys: string[]) {
+    super(`Changed since you started editing: ${fieldKeys.join(', ')}`)
+    this.name = 'StaleEditError'
+    this.fieldKeys = fieldKeys
+  }
+}
+
+/**
+ * For each field (fieldMeta key) an update may touch, the stamp it must still have,
+ * or null if the field must still have no stamp. A touched field not listed is stale.
+ */
+export type ExpectedStamps = Record<string, StampRef | null>
+
 type Obj = Record<string, unknown>
 /** A stored record seen as a plain object, for code that works on any table. */
 type Stored = Obj & SyncFields & { purged: boolean }
 
 const META_KEY = 'meta'
+const SETTINGS_KEY = 'local'
 
 /**
  * All reads and writes of synced records. Every write is stamped, validated and
@@ -118,6 +152,11 @@ export class Repo {
     this.db.close()
   }
 
+  /** The IndexedDB database's name. Tabs with the same name share the same data. */
+  get databaseName(): string {
+    return this.db.name
+  }
+
   /** Automatic local backups, newest first. */
   listBackups(): Promise<BackupInfo[]> {
     return listBackups(this.db)
@@ -126,6 +165,30 @@ export class Repo {
   /** One backup, including its data as export-file JSON (for download). */
   getBackup(id: Uuid): Promise<Backup | undefined> {
     return getBackup(this.db, id)
+  }
+
+  // ---------- Local settings ----------
+
+  /**
+   * This device's settings, such as column layouts. Local only: never synced or exported.
+   * Missing or damaged settings fall back to the defaults; they are preferences, not data.
+   */
+  async getLocalSettings(): Promise<LocalSettings> {
+    const tx = this.db.transaction(SETTINGS_STORE, 'readonly')
+    const stored: unknown = await request(tx.objectStore(SETTINGS_STORE).get(SETTINGS_KEY))
+    if (stored === undefined || validateLocalSettings(stored).length > 0) {
+      return emptyLocalSettings()
+    }
+    return stored as LocalSettings // checked just above
+  }
+
+  /** Saves this device's settings after validating them. */
+  async saveLocalSettings(settings: LocalSettings): Promise<void> {
+    const errors = validateLocalSettings(settings)
+    if (errors.length > 0) throw new ValidationError(errors)
+    await inTransaction(this.db, [SETTINGS_STORE], async (tx) => {
+      await request(tx.objectStore(SETTINGS_STORE).put(structuredClone(settings), SETTINGS_KEY))
+    })
   }
 
   // ---------- Reading ----------
@@ -155,20 +218,34 @@ export class Repo {
 
   // ---------- Writing ----------
 
+  /**
+   * Creates a record. With `assignRoleId`, the record gets the next free Role ID in the
+   * same transaction, so a create that fails validation doesn't use up a number.
+   */
   async create<T extends DataTable>(
     table: T,
     data: Tables[T],
-    options: WriteOptions = {},
+    options: WriteOptions & { assignRoleId?: boolean } = {},
   ): Promise<Live<T>> {
     assertDataTable(table)
     if (table === 'sharedTargets') {
       throw new Error('There is only one shared-targets record; use getSharedTargets().')
     }
     assertNoSyncKeys(data as Obj)
+    if (options.assignRoleId && !ROLE_ID_TABLES.includes(table)) {
+      throw new Error(`${table} records have no Role ID`)
+    }
     return this.write(async (tx, ctx) => {
+      let fields = data as Obj
+      if (options.assignRoleId) {
+        const store = tx.objectStore(META_STORE)
+        const meta = (await request(store.get(META_KEY))) as Meta
+        fields = { ...fields, roleId: formatRoleId(meta.nextRoleNumber) }
+        await request(store.put({ ...meta, nextRoleNumber: meta.nextRoleNumber + 1 }, META_KEY))
+      }
       const at = this.clock()
       const stamp = stampEdit(undefined, this.deviceId, at)
-      const record = buildRecord(newId(), data as Obj, stamp, mapFieldsOf(table))
+      const record = buildRecord(newId(), fields, stamp, mapFieldsOf(table))
       await save(tx, table, record, ctx)
       const keys = Object.keys(record.fieldMeta)
       await this.logChange(tx, ctx, table, record, 'create', keys, {}, at, options)
@@ -179,35 +256,43 @@ export class Repo {
   /**
    * Changes some fields. Only fields whose value actually changes get a new stamp.
    * For map-like fields (such as `custom`), pass the whole new map; entries are compared one by one.
+   * With `expected`, every field that would change must still have the stamp the caller
+   * saw; otherwise nothing is saved and StaleEditError says which fields changed since.
    */
   async update<T extends DataTable>(
     table: T,
     id: Uuid,
     changes: Partial<Tables[T]>,
-    options: WriteOptions = {},
+    options: WriteOptions & { expected?: ExpectedStamps } = {},
   ): Promise<Live<T>> {
     assertDataTable(table)
     assertNoSyncKeys(changes as Obj)
-    const record = await this.write((tx, ctx) =>
-      this.change(tx, ctx, table, id, changes as Obj, 'update', options),
+    const { record } = await this.write((tx, ctx) =>
+      this.change(tx, ctx, table, id, changes as Obj, 'update', options, false, options.expected),
     )
     return record as unknown as Live<T> // validated for this table before saving
   }
 
-  /** Soft delete: the record moves to "recently deleted" and can be restored. */
-  async delete(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
+  /**
+   * Soft delete: the record moves to "recently deleted" and can be restored.
+   * Returns the change log ID (for undo), or null if it was already deleted.
+   */
+  async delete(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<Uuid | null> {
     assertDataTable(table)
     if (table === 'sharedTargets') throw new Error('Shared targets can be reset, not deleted.')
-    await this.write((tx, ctx) =>
+    const { changeId } = await this.write((tx, ctx) =>
       this.change(tx, ctx, table, id, { deleted: true }, 'delete', options),
     )
+    return changeId
   }
 
-  async restore(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<void> {
+  /** Brings a deleted record back. Returns the change log ID, or null if it wasn't deleted. */
+  async restore(table: DataTable, id: Uuid, options: WriteOptions = {}): Promise<Uuid | null> {
     assertDataTable(table)
-    await this.write((tx, ctx) =>
+    const { changeId } = await this.write((tx, ctx) =>
       this.change(tx, ctx, table, id, { deleted: false }, 'restore', options),
     )
+    return changeId
   }
 
   /**
@@ -251,7 +336,7 @@ export class Repo {
   async resetSharedTargets(options: WriteOptions = {}): Promise<LiveRecord<SharedTargetsData>> {
     await this.getSharedTargets()
     const empty = emptySharedTargets() as unknown as Obj
-    const record = await this.write((tx, ctx) =>
+    const { record } = await this.write((tx, ctx) =>
       this.change(tx, ctx, 'sharedTargets', SHARED_TARGETS_ID, empty, 'update', options, true),
     )
     return record as unknown as LiveRecord<SharedTargetsData> // validated before saving
@@ -511,7 +596,8 @@ export class Repo {
     action: ChangeAction,
     options: WriteOptions,
     force = false,
-  ): Promise<Stored> {
+    expected?: ExpectedStamps,
+  ): Promise<{ record: Stored; changeId: Uuid | null }> {
     const old = await load(tx, table, id)
     const at = this.clock()
     const { next, keys, before } = applyChanges(
@@ -522,10 +608,20 @@ export class Repo {
       at,
       force,
     )
-    if (keys.length === 0) return old
+    if (expected) {
+      // Checked inside the transaction, so no other write can slip in between.
+      const stale = keys.filter((key) => {
+        if (!Object.hasOwn(expected, key)) return true
+        const want = expected[key]
+        const have = old.fieldMeta[key]
+        return want === null ? have !== undefined : !have || !sameStamp(want, have)
+      })
+      if (stale.length > 0) throw new StaleEditError(stale)
+    }
+    if (keys.length === 0) return { record: old, changeId: null }
     await save(tx, table, next, ctx)
-    await this.logChange(tx, ctx, table, next, action, keys, before, at, options)
-    return next
+    const changeId = await this.logChange(tx, ctx, table, next, action, keys, before, at, options)
+    return { record: next, changeId }
   }
 
   private async logChange(
@@ -538,8 +634,8 @@ export class Repo {
     before: Record<string, JsonValue>,
     at: Moment,
     options: WriteOptions,
-  ): Promise<void> {
-    if (LOG_TABLES.includes(table)) return
+  ): Promise<Uuid | null> {
+    if (LOG_TABLES.includes(table)) return null
     // The exact stamps this change wrote. Undo compares them with the current stamps.
     const stamps: FieldMeta = {}
     for (const key of fieldKeys) stamps[key] = record.fieldMeta[key]
@@ -554,7 +650,9 @@ export class Repo {
       stageId: options.stageId ?? null,
     }
     const stamp = stampEdit(undefined, this.deviceId, at)
-    await save(tx, 'changeLog', buildRecord(newId(), data as unknown as Obj, stamp, []), ctx)
+    const id = newId()
+    await save(tx, 'changeLog', buildRecord(id, data as unknown as Obj, stamp, []), ctx)
+    return id
   }
 
   private async logConflict(

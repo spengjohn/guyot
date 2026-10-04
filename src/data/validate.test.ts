@@ -7,15 +7,24 @@ import {
   emptySharedTargets,
   makeRecord,
   sampleApplication,
+  sampleGoal,
+  sampleProfile,
   tombstone,
 } from './fixtures'
 import { defaultStamp, stampEdit } from './stamp'
 import type { Uuid } from './types/core'
 import type { FieldDefinitionData } from './types/fields'
-import { validateExportFile, validateRecord, type ValidationContext } from './validate'
+import {
+  validateExportFile,
+  validateLocalSettings,
+  validateRecord,
+  type ValidationContext,
+} from './validate'
+import { STATUS_CHOICES } from './builtinFields'
 
 const APP_ID = '22222222-2222-4222-8222-222222222222' as Uuid
 const FIELD = '33333333-3333-4333-8333-333333333333' as Uuid
+type Obj = Record<string, unknown>
 const noFields: ValidationContext = { customFields: new Map() }
 const stamp = stampEdit(undefined, LAPTOP, at(14))
 
@@ -58,6 +67,15 @@ describe('validateRecord', () => {
     const record = { ...application(), notes: 'x'.repeat(LIMITS.longText + 1) }
     expect(check(record).errors).toEqual([
       `applications.notes: longer than ${LIMITS.longText} characters`,
+    ])
+  })
+
+  it('accepts every Status option and rejects anything else', () => {
+    for (const status of Object.keys(STATUS_CHOICES)) {
+      expect(check({ ...application(), status }).errors).toEqual([])
+    }
+    expect(check({ ...application(), status: 'ghosted' }).errors).toEqual([
+      'applications.status: not a Status option',
     ])
   })
 
@@ -116,6 +134,118 @@ describe('validateRecord', () => {
     // JSON.parse creates a real "__proto__" key, unlike an object literal.
     record.custom = JSON.parse('{"__proto__": "x"}')
     expect(check(record).errors.length).toBeGreaterThan(0)
+  })
+})
+
+describe('search profile overrides', () => {
+  const PROFILE_ID = '55555555-5555-4555-8555-555555555555' as Uuid
+  const sharedField: FieldDefinitionData = {
+    scope: { table: 'sharedTargets' },
+    label: 'Visa sponsorship',
+    type: 'yesNo',
+  }
+
+  function profile(overrides: Obj, customOverrides: Obj = {}) {
+    return makeRecord(PROFILE_ID, { ...sampleProfile(), overrides, customOverrides }, stamp)
+  }
+  const checkProfile = (record: unknown, ctx = noFields) =>
+    validateRecord('searchProfiles', record, ctx)
+
+  it('accepts list overrides in both modes, and text overrides', () => {
+    const record = profile({
+      roleTypes: { mode: 'add', items: ['UX designer'] },
+      dealbreakers: { mode: 'replace', items: [] },
+      excludeRule: 'No agencies',
+    })
+    expect(checkProfile(record)).toEqual({ errors: [], warnings: [] })
+  })
+
+  it('rejects a plain list, which would leave the mode unknown', () => {
+    const record = profile({ roleTypes: ['UX designer'] })
+    expect(checkProfile(record).errors).toEqual([
+      'searchProfiles.overrides.roleTypes: expected an object',
+    ])
+  })
+
+  it('rejects an unknown mode and a mode without items', () => {
+    expect(checkProfile(profile({ roleTypes: { mode: 'merge', items: [] } })).errors).toEqual([
+      'searchProfiles.overrides.roleTypes.mode: expected one of add, replace',
+    ])
+    expect(checkProfile(profile({ roleTypes: { mode: 'add' } })).errors).toEqual([
+      'searchProfiles.overrides.roleTypes.items: missing',
+    ])
+  })
+
+  it('rejects overrides of fields that are not shared targets', () => {
+    expect(checkProfile(profile({ salary: 'high' })).errors).toContain(
+      'searchProfiles.overrides.salary: not a shared target field',
+    )
+  })
+
+  it('checks custom overrides against their field, keyed by field ID', () => {
+    const ctx = { customFields: new Map([[FIELD, sharedField]]) }
+    expect(checkProfile(profile({}, { [FIELD]: true }), ctx)).toEqual({ errors: [], warnings: [] })
+    expect(checkProfile(profile({}, { [FIELD]: null }), ctx).errors).toEqual([]) // empty
+    expect(checkProfile(profile({}, { [FIELD]: 'yes' }), ctx).errors).toEqual([
+      `searchProfiles.customOverrides.${FIELD}: expected yes/no`,
+    ])
+    expect(checkProfile(profile({}, { Visa: true }), ctx).errors).toContain(
+      'searchProfiles.customOverrides.Visa: expected an ID',
+    )
+  })
+
+  it('keeps and flags custom overrides for unknown or non-shared fields', () => {
+    expect(checkProfile(profile({}, { [FIELD]: true })).warnings).toEqual([
+      `searchProfiles.customOverrides.${FIELD}: value for an unknown custom field (kept)`,
+    ])
+    const appField = { ...sharedField, scope: { table: 'applications' as const } }
+    const ctx = { customFields: new Map([[FIELD, appField]]) }
+    expect(checkProfile(profile({}, { [FIELD]: true }), ctx)).toEqual({
+      errors: [],
+      warnings: [
+        `searchProfiles.customOverrides.${FIELD}: overrides a field that is not a shared target (kept)`,
+      ],
+    })
+  })
+})
+
+describe('goals', () => {
+  const GOAL_ID = '66666666-6666-4666-8666-666666666666' as Uuid
+  const goal = (changes: Obj = {}) => makeRecord(GOAL_ID, { ...sampleGoal(), ...changes }, stamp)
+  const checkGoal = (record: unknown) => validateRecord('goals', record, noFields).errors
+
+  it('accepts a valid goal, with or without an end day', () => {
+    expect(checkGoal(goal())).toEqual([])
+    expect(checkGoal(goal({ endDay: '2026-12-31', period: 'month' }))).toEqual([])
+  })
+
+  it('rejects a target that is not a whole number of at least 1', () => {
+    expect(checkGoal(goal({ target: 0 }))).toEqual(['goals.target: below 1'])
+    expect(checkGoal(goal({ target: 2.5 }))).toEqual(['goals.target: expected a whole number'])
+  })
+
+  it('rejects unknown measures, periods and weekdays', () => {
+    expect(checkGoal(goal({ measure: 'interviews' }))).toHaveLength(1)
+    expect(checkGoal(goal({ period: 'year' }))).toHaveLength(1)
+    expect(checkGoal(goal({ weekStartsOn: 'mon' }))).toHaveLength(1)
+  })
+
+  it('rejects an end day before the start day', () => {
+    expect(checkGoal(goal({ endDay: '2026-10-04' }))).toEqual([
+      'goals.endDay: before the start day',
+    ])
+    expect(checkGoal(goal({ endDay: '2026-10-05' }))).toEqual([]) // one-day goal
+  })
+})
+
+describe('validateLocalSettings', () => {
+  it('accepts column layouts and rejects damaged ones', () => {
+    const layout = { scope: { table: 'applications' }, order: ['company', FIELD], hidden: [] }
+    expect(validateLocalSettings({ columnLayouts: [layout] })).toEqual([])
+    expect(validateLocalSettings({ columnLayouts: [{ ...layout, order: 'company' }] })).toEqual([
+      'settings.columnLayouts[0].order: expected a list',
+    ])
+    expect(validateLocalSettings(null)).toEqual(['settings: expected an object'])
   })
 })
 

@@ -1,6 +1,6 @@
 # TypeScript notes
 
-The TypeScript concepts used in this codebase, each with an example from it. Read alongside the code; the [TypeScript handbook](https://www.typescriptlang.org/docs/handbook/intro.html) has the full story.
+The TypeScript concepts used in this codebase, each with an example from it, followed by [React notes](#react-notes). Read alongside the code; the [TypeScript handbook](https://www.typescriptlang.org/docs/handbook/intro.html) has the full story.
 
 TypeScript checks types when you build, then is removed: the browser runs plain JavaScript. Our config (`erasableSyntaxOnly`) only allows TypeScript features that can simply be erased, which is why there are no `enum`s.
 
@@ -74,6 +74,65 @@ Calling `repo.update('applications', id, { company: 42 })` fails the build: `com
 - **`Omit<X, K>`**: X without property K. `BackupInfo` is a `Backup` without its large `json`.
 - **`Readonly<X>` and `readonly`**: can't be modified or reassigned.
 - **`Record<Union, true>` as a checklist**: TypeScript requires every member of the union as a key, so adding a table or field type without updating the checklist fails the build (`TABLE_SET` in constants.ts).
+- **`Pick<X, K>`**: X with only properties K. `effectiveTargets` takes `Pick<SearchProfileData, 'overrides' | 'customOverrides'>`, so it can't depend on anything else in a profile.
+
+## Conditional types
+
+**`A extends B ? X : Y`** is an if/else for types: if A fits B, the result is X, otherwise Y. Inside a mapped type it runs once per key, so each property can get a different type:
+
+```ts
+type SharedTargetOverrides = {
+  [K in keyof SharedTargetsFields]?: SharedTargetsFields[K] extends string[]
+    ? ListOverride // roleTypes, mustHaveKeywords, ...
+    : SharedTargetsFields[K] // excludeRule, eligibilityNotes: string
+}
+```
+
+**Picking keys by their type.** Map each key to itself or to `never` (the empty type), then index the result with `[keyof X]` to collect the values. `never` disappears from a union, leaving only the keys you kept:
+
+```ts
+type ListKey = {
+  [K in keyof SharedTargetsFields]: SharedTargetsFields[K] extends string[] ? K : never
+}[keyof SharedTargetsFields] // 'roleTypes' | 'industries' | ...
+```
+
+**A filter that narrows.** `array.filter` with a type predicate returns the narrower type, so `LIST_KEYS` in targets.ts is a `ListKey[]` and `profile.overrides[key]` is known to be a `ListOverride`:
+
+```ts
+const LIST_KEYS = KEYS.filter((key): key is ListKey => KINDS[key] === 'list')
+```
+
+## Constants as types
+
+- **`as const`** keeps a value's exact literal types and makes it read-only. Without it, `{ applied: { label: 'Applied' } }` would be typed as `{ applied: { label: string } }`.
+- **`satisfies X`** checks a value against a type without widening it to that type. `STATUS_CHOICES` (builtinFields.ts) is checked to be a valid choice list, but keeps its exact keys:
+
+  ```ts
+  export const STATUS_CHOICES = {
+    applied: { label: 'Applied', order: 1, hidden: false },
+    // ...
+  } as const satisfies Record<string, ChoiceOption>
+  ```
+
+- **`typeof value`** in a type position gives the type of a value. `keyof typeof STATUS_CHOICES` is `'applied' | 'screening' | ...`.
+- **`(typeof ARRAY)[number]`** is the type of any element: from `EDITABLE_KEYS = ['company', 'role', ...] as const`, the union `'company' | 'role' | ...` (applicationForm.ts).
+
+**Exhaustive `switch` with `never`.** `never` is the type with no values. If every case of a union is handled, what's left in `default` is `never`; if a case is added to the union and forgotten here, assigning it to `never` fails the build (`pageFor` in Shell.tsx):
+
+```ts
+default: {
+  const unhandled: never = route
+  return unhandled
+}
+```
+
+**Generic helpers that pair a key with its value type.** `draft[key] = record[key]` fails when `key` is a union, because TypeScript can't tell both sides use the same key. A small generic function fixes the key to one type parameter `K` (`setKey` in applicationForm.ts):
+
+```ts
+function setKey<K extends EditableKey>(draft: ApplicationDraft, key: K, value: ApplicationData[K]) {
+  draft[key] = value
+}
+```
 
 ## Narrowing and trust
 
@@ -88,3 +147,41 @@ Calling `repo.update('applications', id, { company: 42 })` fails the build: `com
 - **`class`** groups data with the functions that use it. `Repo.open()` creates one; `repo.update(...)` calls a method. `private` members are usable only inside the class.
 - **`import type`**: imports used only as types are removed from the built JavaScript. Our config requires saying so.
 - **`async` and `Promise<T>`**: an `async` function returns a promise of a value that arrives later; `await` waits for it. `Promise<Live<T>>` is "later, a live record of table T".
+
+# React notes
+
+React builds the page from **components**: functions that take **props** (inputs) and return what to show. When a component's state changes, React calls it again and updates only the parts of the page that differ.
+
+## Components and JSX
+
+- **`.tsx` and JSX.** `.tsx` files may contain HTML-like syntax (JSX), which compiles to function calls. Differences from HTML: `className` instead of `class`, `htmlFor` instead of `for`, and `{...}` for any JavaScript expression.
+- **Typed props.** A component's props are one object, typed like any other:
+
+  ```tsx
+  export function Page({ title, children }: { title: string; children: ReactNode }) { ... }
+  ```
+
+  `ReactNode` is "anything React can show": text, elements, lists, or nothing. `children` is whatever is written between the opening and closing tags.
+
+- **Lists need `key`.** When rendering an array, each item gets a stable `key` (a record `id`), so React can tell which item moved or changed instead of rebuilding them all. Rows use `key={app.id}`; columns use the field key.
+- **Changing `key` resets a component.** A new key makes React discard the old component and start a fresh one, with fresh state. The Edit form uses this on purpose (`controlKey` in applicationForm.ts): when a save elsewhere replaces the value an untouched field shows, its input gets a new key and starts over from the new value.
+- **Live regions inside a modal dialog.** While a dialog is open with `showModal()`, everything outside it is inert, including the app's live region, so screen readers ignore it. The Edit dialog has its own `role="status"` regions for messages shown while it's open.
+- **Conditional rendering.** `{notice && <div>...</div>}` shows the element only when `notice` is set.
+
+## State and effects
+
+- **`useState`** keeps a value between calls and re-renders when it's set: `const [open, setOpen] = useState(false)`. Passing a function, `useState(() => draftOf(editing))`, runs it only on the first render. Passing a function to the setter, `setDraft((current) => ...)`, updates from the latest value.
+- **Controlled inputs.** The input's `value` comes from state, and `onChange` updates the state, so the state is always what's on screen. Event handlers get typed events: `ChangeEvent<HTMLInputElement>` has `e.target.value`.
+- **`useEffect`** runs code after React updates the page: talking to the browser (`document.title`, focus, `showModal()`) or starting a load. The array at the end lists what it depends on; it runs again when one changes. The function it returns is the **cleanup**, run before the next run or when the component goes away (`App.tsx` closes the database there).
+- **Strict mode** (main.tsx) runs effects twice in development, to catch effects without proper cleanup. That's why `App.tsx` handles being cancelled and why `ApplicationDialog` only calls `showModal()` if the dialog isn't open yet.
+- **`useRef`** holds a value that survives re-renders without causing one. Two uses here: a handle on a page element (`<dialog ref={dialogRef}>`, then `dialogRef.current.showModal()`), and remembering something for the next effect (`pendingFocus` in TrackerPage).
+- **`useId`** makes an ID unique to one component instance, so `<label htmlFor={id}>` and `<input id={id}>` match even when the same component appears many times.
+- **`useMemo` and `useCallback`** keep a computed value or a function the same between renders unless its inputs change, so effects that depend on it don't re-run needlessly (`RepoProvider`).
+
+## Sharing data down the tree
+
+- **Context** passes a value to every component below without threading props through each level. `createContext` makes one; in React 19 the context itself is the provider, `<RepoContext value={...}>`; `useContext(RepoContext)` reads it. We use it for the open `Repo` and for `announce()`.
+- **Custom hooks** are functions starting with `use` that call other hooks, so components share logic. `useRepoQuery(load)` loads data and reloads after every write; `useRepoWrite()` runs a write and triggers that reload; `useHashRoute()` gives the current page.
+- **`useSyncExternalStore`** connects state that lives outside React (here, the URL hash) to a component: given a way to subscribe to changes (`hashchange`) and a way to read the current value, it re-renders when the value changes (`useHashRoute.ts`).
+- **Rules of hooks.** Hooks are called at the top of a component, in the same order every render: never inside `if`, loops or after an early `return`. That's why `TrackerPage` calls all its hooks before returning the loading message. ESLint checks this.
+- **Fast refresh.** In development, Vite swaps edited components in place. It only works if a `.tsx` file exports nothing but components, so contexts and hooks live in `.ts` files (`repoContext.ts`, `announce.ts`) next to their provider components.

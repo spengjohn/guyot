@@ -22,6 +22,11 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // A labeled region that scrolls sideways (a wide table) must be focusable so
+      // keyboard users can scroll it (WCAG 2.1.1). The default allows only tabpanel.
+      'jsx-a11y/no-noninteractive-tabindex': ['error', { roles: ['tabpanel', 'region'] }],
+    },
   },
   // Must stay last: turns off ESLint rules that would fight Prettier's formatting.
   prettier,
