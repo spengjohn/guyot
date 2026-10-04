@@ -116,14 +116,24 @@ Targets tell the searcher, human or AI, what to look for. Two tables, both open 
 
 - **Search profiles** (one per search): Name, Term, Employment types (list of choices), Locations (list of places), Work modes (list of choices), Minimum pay (number + period + currency), Priority (optional choice: High/Medium/Low), Active (yes/no), Notes. To target another set of places, the user duplicates a profile and edits its locations.
 - **Shared targets** (one record, applies to every active profile): role types, industries, companies to prioritize, companies to exclude (hard list plus a free-text rule), must-have keywords, nice-to-have keywords, dealbreakers, eligibility notes, preferred sources. Store lists as arrays, not comma-separated text.
-- Any profile can override any shared field; the profile's value wins where set.
+- Any profile can override any shared field, built-in or custom; the profile's value wins where set. Overrides of custom shared fields are keyed by field ID, so renames never break them.
+- List overrides have a mode: **Add to shared** (default; the profile's items are added to the shared list, duplicates removed) or **Replace** (the profile's list is used instead). Store the mode and the items together as one override value (one stamp), so a merge can never pair one device's mode with another device's items.
 - Each posting stores the `profileId` it was found under.
 - Eligibility notes are personal: send them to an AI only from stages that need them, and mark them in the prompt editor.
 - "Max openings per discovery run" belongs to Discover stage settings. "Last updated" comes from `updatedAt`, never typed by hand.
 
+### Goals
+
+Goals drive the dashboard's goal tracker. They are synced records (random UUIDs), so every device shows the same goals and progress.
+
+- Fields: Name, Measure (choice; only "applications sent" for now, counted by Date Applied; more measures later need their own dates), Target (whole number), Period (week or month), Week starts on (Monday by default; stored on the goal so every device counts the same days), Start day and optional End day (calendar days), Active (yes/no), Notes.
+- Progress is computed, never stored: count the live (not deleted) applications whose Date Applied falls in the current period. Count calendar days as `YYYY-MM-DD` strings, never through a time zone.
+- Pace compares progress with the target prorated by days elapsed in the period ("6 of 10, on pace" / "2 behind").
+- Deleting a goal is a soft delete like any record; past applications are never touched.
+
 ### Tables
 
-Search profiles, shared targets, postings, stage rows (Discover, Triage, Tailor), applications, resume versions, job description snapshots, field definitions, pipeline definitions, stage instructions (versioned), conflict log, change log (includes "applied by AI" entries), meta (deviceId, Role ID counter), settings (local only unless encrypted).
+Search profiles, shared targets, goals, postings, stage rows (Discover, Triage, Tailor), applications, resume versions, job description snapshots, field definitions, pipeline definitions, stage instructions (versioned), conflict log, change log (includes "applied by AI" entries), meta (deviceId, Role ID counter), settings (local only unless encrypted).
 
 Applications columns: Date Applied, Last Update, Listing, Job Description (snapshot), Company, Role, Status, Resume, Contact, Notes, Role ID, Deadline, Next Follow-up.
 
@@ -165,7 +175,7 @@ Discover (paste listings, extract fields, dedupe, mark Keep/Maybe/Skip) → Tria
 ## Build order
 
 1. Data layer: IndexedDB with sync-ready records, field-level merge, validation, field definitions, JSON export/import. Tests with Vitest + fake-indexeddb (dev only).
-2. Tracker and dashboard: Applications table, KPI tiles, goal tracker with pace, charts, "needs attention" list, job description snapshots, Targets screen, column picker.
+2. Tracker and dashboard (2a: app shell, built-in fields, Applications table, column picker; 2b: Targets screen, restore from backup; 2c: dashboard): Applications table, KPI tiles, goal tracker with pace, charts, "needs attention" list, job description snapshots, Targets screen, column picker.
 3. Sync: adapter interface, encryption, then Google Drive, then Dropbox and OneDrive.
 4. Manual Triage stage with the review gate.
 5. AI settings and adapters, then "Suggest" on Triage.
