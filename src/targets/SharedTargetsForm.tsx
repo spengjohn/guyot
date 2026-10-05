@@ -8,7 +8,10 @@ import type { FieldSpec } from '../fields/columns'
 import { FieldControl } from '../fields/FieldControl'
 import { saveRequest } from '../forms/editModel'
 import { ChangesNotice, ConflictList, ErrorSummary } from '../forms/FormParts'
+import { CollapsibleField, ExpandControls } from '../forms/CollapsibleField'
+import { previewOf } from '../forms/preview'
 import { useEditForm } from '../forms/useEditForm'
+import { useOpenSet } from '../forms/useOpenSet'
 import { formatMoment } from '../ui/dates'
 import type { SavedSharedTargets } from './targetsForm'
 
@@ -38,6 +41,10 @@ export function SharedTargetsForm({ latest, fields }: Props) {
     defaults: opened,
   })
   const hasEdits = Object.keys(form.edits).length > 0
+  // Every field starts collapsed; Expand all opens them. Fields needing attention stay open.
+  const rows = useOpenSet(() => [])
+  // Bumped after Save or Discard, so inputs that keep their own text start fresh.
+  const [version, setVersion] = useState(0)
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
@@ -60,12 +67,14 @@ export function SharedTargetsForm({ latest, fields }: Props) {
     if (ok && saved) {
       setOpened(saved)
       form.reset()
+      setVersion((v) => v + 1)
       announce('Saved shared targets.')
     }
   }
 
   const discard = () => {
     form.reset()
+    setVersion((v) => v + 1)
     announce('Your unsaved changes to shared targets were discarded.')
   }
 
@@ -81,9 +90,26 @@ export function SharedTargetsForm({ latest, fields }: Props) {
         <ChangesNotice form={form} deletedText="" />
         <ConflictList form={form} />
         <ErrorSummary form={form} />
-        {fields.map((field) => (
-          <FieldControl key={form.keyOf(field)} {...form.fieldProps(field)} />
-        ))}
+        <ExpandControls
+          count={fields.length}
+          what="shared targets"
+          onExpand={() => rows.openAll(fields.map((f) => f.key))}
+          onCollapse={rows.closeAll}
+        />
+        <div className="field-grid">
+          {fields.map((field) => (
+            <CollapsibleField
+              key={field.key}
+              label={field.label}
+              preview={previewOf(field, form.stateOf(field).value)}
+              open={rows.isOpen(field.key)}
+              onToggle={(open) => rows.setOpen(field.key, open)}
+              attention={form.needsAttention(field)}
+            >
+              <FieldControl key={`${form.keyOf(field)}#${version}`} {...form.fieldProps(field)} />
+            </CollapsibleField>
+          ))}
+        </div>
         <div className="actions">
           <button type="submit" id={form.saveButtonId} className="primary">
             {form.saving ? 'Saving…' : 'Save shared targets'}

@@ -4,7 +4,8 @@ import type { CalendarDay, ChoiceId, ZonedMoment } from '../data/types/core'
 import type { Deadline, FieldValue, Money, PayPeriod } from '../data/types/fields'
 import { deviceTimeZone, momentToZonedTime, timeZoneNames, zonedTimeToMoment } from '../ui/dates'
 import type { FieldSpec } from './columns'
-import { linesToList, moneyFrom, type MoneyParts } from './parse'
+import { ListEditor } from './ListEditor'
+import { moneyFrom, type MoneyParts } from './parse'
 
 /**
  * Called with the new value. `problem` is set when the input holds something that
@@ -414,32 +415,23 @@ function DeadlineControl({ field, value, onChange, error, hint }: Props) {
 
 // ---------- Lists, checkboxes and money ----------
 
-/**
- * A list typed one item per line. The text is kept as typed while the user edits
- * (rebuilding it from the list would swallow the new line they just started); the list
- * itself is recomputed on every change.
- */
+/** A list, as rows with Remove and an add box (see ListEditor). */
 function TextListControl({ field, value, onChange, error, hint }: Props) {
   const id = useId()
-  const [text, setText] = useState(() => ((value as string[] | null) ?? []).join('\n'))
-  const help = ['One per line.', hint].filter(Boolean).join(' ')
+  const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ')
   return (
-    <div className="field">
-      <label htmlFor={id}>
+    <fieldset className="field-group">
+      <legend>
         <LabelText field={field} />
-      </label>
-      <textarea
-        id={id}
-        rows={4}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          onChange(linesToList(e.target.value))
-        }}
-        {...ariaFor(id, { error, hint: help, required: field.required })}
+      </legend>
+      <ListEditor
+        label={field.label}
+        items={(value as string[] | null) ?? []}
+        onChange={(items, problem) => onChange(items, problem)}
+        describedBy={describedBy || undefined}
       />
-      <HelpText baseId={id} error={error} hint={help} />
-    </div>
+      <HelpText baseId={id} error={error} hint={hint} />
+    </fieldset>
   )
 }
 

@@ -4,11 +4,9 @@ import { Page } from '../app/Page'
 import { useRepoQuery, useRepoWrite } from '../app/repoContext'
 import type { Repo } from '../data/repo'
 import type { Uuid } from '../data/types/core'
-import type { FieldValue as Value } from '../data/types/fields'
 import type { LiveRecord } from '../data/types/record'
 import type { SearchProfileData } from '../data/types/tables'
-import { FieldValue } from '../fields/FieldValue'
-import { savedValue } from '../forms/editModel'
+import { ProfileCard } from '../targets/ProfileCard'
 import { ProfileDialog } from '../targets/ProfileDialog'
 import { SharedTargetsForm } from '../targets/SharedTargetsForm'
 import {
@@ -20,7 +18,6 @@ import {
   sharedFields,
   type SavedProfile,
 } from '../targets/targetsForm'
-import { formatMoment } from '../ui/dates'
 
 type Profile = LiveRecord<SearchProfileData>
 
@@ -44,9 +41,6 @@ async function loadTargets(repo: Repo) {
   }
 }
 
-/** Columns in the profiles table: these built-in fields, then Last updated. */
-const TABLE_KEYS = ['term', 'locations', 'workModes', 'priority', 'active']
-
 /** Adding (or duplicating) carries the new profile's starting values, made once on click. */
 type Dialog =
   { mode: 'add' | 'duplicate'; defaults: SavedProfile } | { mode: 'edit'; record: Profile } | null
@@ -66,6 +60,7 @@ export function TargetsPage() {
   const write = useRepoWrite()
   const announce = useAnnounce()
   const captionId = useId()
+  const countId = `${captionId}-count`
   const [dialog, setDialog] = useState<Dialog>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const pendingFocus = useRef<string | null>(null)
@@ -92,8 +87,6 @@ export function TargetsPage() {
     )
   }
   const { shared, profiles, deleted, profileSpecs, sharedSpecs, overrideSpecs } = query.data
-  const tableSpecs = TABLE_KEYS.map((key) => profileSpecs.find((f) => f.key === key)!)
-  const nameSpec = profileSpecs.find((f) => f.key === 'name')!
 
   const remove = async (profile: Profile) => {
     const name = describeProfile(profile)
@@ -189,72 +182,27 @@ export function TargetsPage() {
         {profiles.length === 0 ? (
           <p>No profiles yet. Use Add profile to describe your first search.</p>
         ) : (
-          <div className="table-wrap" role="region" aria-labelledby={captionId} tabIndex={0}>
-            <table>
-              <caption id={captionId}>
-                {profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">{nameSpec.label}</th>
-                  {tableSpecs.map((f) => (
-                    <th key={f.key} scope="col">
-                      {f.label}
-                    </th>
-                  ))}
-                  <th scope="col">Last updated</th>
-                  <th scope="col">
-                    <span className="visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {profiles.map((profile) => {
-                  const name = describeProfile(profile)
-                  return (
-                    <tr key={profile.id}>
-                      <th scope="row">{name}</th>
-                      {tableSpecs.map((f) => (
-                        <td key={f.key}>
-                          <FieldValue
-                            field={f}
-                            value={savedValue(profile, f) as Value} // profile fields hold field values
-                          />
-                        </td>
-                      ))}
-                      <td>{formatMoment(profile.updatedAt)}</td>
-                      <td className="row-actions">
-                        <button
-                          type="button"
-                          id={editButtonId(profile.id)}
-                          aria-label={`Edit ${name}`}
-                          onClick={() => setDialog({ mode: 'edit', record: profile })}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Duplicate ${name}`}
-                          onClick={() =>
-                            setDialog({ mode: 'duplicate', defaults: duplicateOf(profile) })
-                          }
-                        >
-                          Duplicate
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Delete ${name}`}
-                          onClick={() => remove(profile)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <p id={countId} className="hint">
+              {profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'}
+            </p>
+            <ul className="card-list" aria-labelledby={countId}>
+              {profiles.map((profile) => (
+                <li key={profile.id}>
+                  <ProfileCard
+                    profile={profile}
+                    fields={profileSpecs}
+                    editButtonId={editButtonId(profile.id)}
+                    onEdit={() => setDialog({ mode: 'edit', record: profile })}
+                    onDuplicate={() =>
+                      setDialog({ mode: 'duplicate', defaults: duplicateOf(profile) })
+                    }
+                    onDelete={() => remove(profile)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         {deleted.length > 0 && (

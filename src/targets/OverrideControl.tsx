@@ -6,7 +6,7 @@ import type { ListMode, ListOverride, SharedTargetsData } from '../data/types/ta
 import type { FieldSpec } from '../fields/columns'
 import { FieldControl } from '../fields/FieldControl'
 import { FieldValue } from '../fields/FieldValue'
-import { linesToList } from '../fields/parse'
+import { ListEditor } from '../fields/ListEditor'
 import type { EditValue } from '../forms/editModel'
 
 interface Props {
@@ -75,16 +75,17 @@ function ListOverrideControl(props: Props) {
   const { sharedField, shared, onChange, error, hint } = props
   const id = useId()
   const override = props.value as ListOverride | undefined
-  const [text, setText] = useState(() => (override?.items ?? []).join('\n'))
+  // Remembered across mode changes, so switching Add <-> Replace keeps the items.
+  const [items, setItems] = useState<string[]>(() => [...(override?.items ?? [])])
   const mode: ListMode | 'shared' = override?.mode ?? 'shared'
   const sharedItems = (sharedValueOf(props) as string[] | undefined) ?? []
 
   const setMode = (next: ListMode | 'shared') => {
-    onChange(next === 'shared' ? undefined : { mode: next, items: linesToList(text) })
+    onChange(next === 'shared' ? undefined : { mode: next, items })
   }
-  const setItems = (raw: string) => {
-    setText(raw)
-    if (override) onChange({ mode: override.mode, items: linesToList(raw) })
+  const changeItems = (next: string[], problem?: string) => {
+    setItems(next)
+    if (override) onChange({ mode: override.mode, items: next }, problem)
   }
   const effective = effectiveTargets(shared, {
     overrides: override ? { [sharedField.key]: override } : {},
@@ -110,21 +111,11 @@ function ListOverrideControl(props: Props) {
         ))}
       </div>
       {mode !== 'shared' && (
-        <div className="field">
-          <label htmlFor={`${id}-items`}>
-            {mode === 'add' ? `${sharedField.label} to add` : `${sharedField.label} instead`}
-          </label>
-          <textarea
-            id={`${id}-items`}
-            rows={3}
-            value={text}
-            onChange={(e) => setItems(e.target.value)}
-            aria-describedby={`${id}-lines`}
-          />
-          <p id={`${id}-lines`} className="hint">
-            One per line.
-          </p>
-        </div>
+        <ListEditor
+          label={`${sharedField.label} for this profile`}
+          items={items}
+          onChange={changeItems}
+        />
       )}
       <p className="effective">
         This profile will use: <strong>{listText(effective)}</strong>

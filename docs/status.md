@@ -86,7 +86,6 @@ User interface:
 
 Known limits added in 2b:
 
-- Lists are typed one per line, so an item can't contain a line break.
 - Minimum pay defaults to USD; the device's own currency isn't detected.
 
 ### After 2b: encrypted downloads and a backup fix
@@ -94,6 +93,14 @@ Known limits added in 2b:
 - **Exports and downloaded backups are encrypted by default** ([ADR 0016](decisions/0016-encrypted-exports.md)): a passphrase typed twice; PBKDF2-SHA-256 (600,000 iterations) and AES-GCM from the browser's Web Crypto; a wrong passphrase or changed file fails cleanly. Unencrypted downloads sit behind a warning and an "I understand" box. Encrypted files ask for their passphrase on import; older plain files still import. Backups inside the browser stay unencrypted, like the live data (a "lock this device" feature could change that later).
 - **Restoring never prunes the backup being restored**: the oldest other backup goes instead.
 - 208 tests.
+
+### After 2b: a more compact Targets page
+
+- Every shared target is a collapsible row (a native `<details>`) showing a one-line preview ("2: UX designer, Researcher", "Uses shared", "Adds 1: …"), with Expand all / Collapse all. The rows sit two per line on wide screens and one on narrow ones. A row with an error or conflict opens on its own and says "Needs attention".
+- Lists are rows: each item is a small text box with Remove, and an add box with + Add below. Enter adds; pasting several lines adds each; duplicates are refused; text typed but not added stops Save with a message instead of being lost.
+- The profile dialog uses the same rows for Locations and for override items, and each override is a collapsible row (overrides already set start open).
+- Search profiles are cards instead of a table, so they fit narrow screens: the name as the heading, then only the fields that have a value, an "Inactive" tag when switched off, how many shared targets it overrides, Last updated, and Edit, Duplicate and Delete. Cards flow as many per row as fit.
+- 220 tests.
 
 ### Next: 2c
 

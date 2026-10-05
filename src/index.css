@@ -498,3 +498,148 @@ input[type='file'] {
 .unencrypted .check {
   margin-bottom: 0.5rem;
 }
+
+/* ---------- Collapsible fields, two columns, list rows ---------- */
+
+/* Two columns when there's room for both, one on narrow screens; no media query needed. */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+  gap: 0.75rem 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.expand-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+details.collapsible {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  margin-bottom: 0.5rem;
+}
+details.collapsible > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+details.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+details.collapsible > summary::before {
+  content: '▸' / ''; /* decoration only: screen readers hear "collapsed"/"expanded" */
+}
+details.collapsible[open] > summary::before {
+  content: '▾' / '';
+}
+.collapsible-label {
+  font-weight: 600;
+}
+.collapsible-preview {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.collapsible-body {
+  padding: 0 0.75rem 0.75rem;
+}
+.collapsible-body > .field-group,
+.collapsible-body > .field {
+  margin-bottom: 0;
+}
+.tag {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+}
+.list-rows {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+.list-rows li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.list-rows li input,
+.list-add input {
+  flex: 1;
+  min-width: 0;
+}
+.list-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.list-add label {
+  flex-basis: 100%;
+  font-weight: 600;
+}
+
+/* ---------- Profile cards ---------- */
+
+/* As many cards per row as fit (at least 16rem each), one per row on a phone. */
+.card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.card-header h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.muted-tag {
+  color: var(--muted);
+  border-color: var(--muted);
+}
+.card-fields {
+  margin: 0.25rem 0;
+}
+.card-fields div {
+  margin-bottom: 0.35rem;
+}
+.card-fields dt {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.card-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}

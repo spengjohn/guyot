@@ -5,9 +5,12 @@ import type { LiveRecord } from '../data/types/record'
 import type { SearchProfileData, SharedTargetsData } from '../data/types/tables'
 import type { FieldSpec } from '../fields/columns'
 import { FieldControl } from '../fields/FieldControl'
-import { newRecordData, saveRequest } from '../forms/editModel'
+import { CollapsibleField, ExpandControls } from '../forms/CollapsibleField'
+import { newRecordData, savedValue, saveRequest } from '../forms/editModel'
 import { ChangesNotice, ConflictList, ErrorSummary } from '../forms/FormParts'
+import { previewOf } from '../forms/preview'
 import { useEditForm } from '../forms/useEditForm'
+import { useOpenSet } from '../forms/useOpenSet'
 import { OverrideControl } from './OverrideControl'
 import {
   describeProfile,
@@ -63,6 +66,10 @@ export function ProfileDialog(props: Props) {
     if (dialog && !dialog.open) dialog.showModal()
   }, [])
 
+  // Overrides already set start open; the rest start collapsed.
+  const overrideRows = useOpenSet(() =>
+    overrides.filter((f) => savedValue(opened ?? defaults, f) !== undefined).map((f) => f.key),
+  )
   const overridesNeedAttention = overrides.some(form.needsAttention)
   const overridesOpen = showOverrides || overridesNeedAttention
 
@@ -144,19 +151,35 @@ export function ProfileDialog(props: Props) {
               <p className="hint">
                 Each shared target applies to this profile unless you override it here.
               </p>
+              <ExpandControls
+                count={overrides.length}
+                what="overrides"
+                onExpand={() => overrideRows.openAll(overrides.map((f) => f.key))}
+                onCollapse={overrideRows.closeAll}
+              />
               {overrides.map((field) => {
                 const { error, hint, onChange } = form.fieldProps(field)
+                const sharedField = sharedFieldOf(field, sharedFields)
                 return (
-                  <OverrideControl
-                    key={form.keyOf(field)}
-                    field={field}
-                    sharedField={sharedFieldOf(field, sharedFields)}
-                    shared={shared}
-                    value={form.stateOf(field).value}
-                    onChange={onChange}
-                    error={error}
-                    hint={hint}
-                  />
+                  <CollapsibleField
+                    key={field.key}
+                    label={sharedField.label}
+                    preview={previewOf(field, form.stateOf(field).value)}
+                    open={overrideRows.isOpen(field.key)}
+                    onToggle={(open) => overrideRows.setOpen(field.key, open)}
+                    attention={form.needsAttention(field)}
+                  >
+                    <OverrideControl
+                      key={form.keyOf(field)}
+                      field={field}
+                      sharedField={sharedField}
+                      shared={shared}
+                      value={form.stateOf(field).value}
+                      onChange={onChange}
+                      error={error}
+                      hint={hint}
+                    />
+                  </CollapsibleField>
                 )
               })}
             </>
