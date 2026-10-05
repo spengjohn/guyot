@@ -21,6 +21,8 @@ Each record explains one design decision: the problem, what we chose, what we re
 | [0015](0015-restore-as-edits.md)              | Restoring a backup applies it as new edits                   |
 | [0016](0016-encrypted-exports.md)             | Exports and downloaded backups are encrypted by default      |
 | [0017](0017-vineyard-theme.md)                | The vineyard theme: three color families, AAA text, own font |
+| [0018](0018-browser-checks.md)                | Automated browser checks with Playwright and axe-core        |
+| [0019](0019-automated-security-checks.md)     | Security checks use existing tools, plus a review each step  |
 
 ## Adding a record
 

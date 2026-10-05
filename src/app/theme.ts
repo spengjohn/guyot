@@ -12,6 +12,7 @@ const KEY = 'guyot-theme'
 
 export function savedTheme(): ThemeChoice | null {
   try {
+    // eslint-disable-next-line no-restricted-globals -- display preference only, see above
     const value = localStorage.getItem(KEY)
     return value === 'light' || value === 'dark' ? value : null
   } catch {
@@ -33,6 +34,7 @@ export function applyTheme(choice: ThemeChoice | null): void {
 export function saveTheme(choice: ThemeChoice): void {
   applyTheme(choice)
   try {
+    // eslint-disable-next-line no-restricted-globals -- display preference only, see above
     localStorage.setItem(KEY, choice)
   } catch {
     // not saved, but applied for this visit

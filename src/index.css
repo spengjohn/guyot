@@ -75,8 +75,10 @@ a {
   font-weight: var(--weight-bold);
   font-size: var(--text-xl);
 }
+/* Wraps so the nav fits a 320px-wide window (WCAG 1.4.10 Reflow). */
 .site-header ul {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0;
   padding: 0;

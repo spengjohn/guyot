@@ -39,6 +39,7 @@ Before considering a change done, run `npm run lint`, `npm run format:check`, `n
 - [docs/status.md](docs/status.md): what's built, what's deferred and what's next
 - [docs/data-layer.md](docs/data-layer.md): how storage, merging and validation fit together
 - [docs/theme.md](docs/theme.md): colors, type and spacing tokens, and the accessibility rules they meet
+- [docs/browser-checks.md](docs/browser-checks.md): automated browser checks (accessibility, flows, screenshots) and what still needs a person
 - [docs/decisions/](docs/decisions/): why the design is the way it is, one record per decision
 - [docs/typescript-notes.md](docs/typescript-notes.md): TypeScript and React concepts used in this codebase
 - [CLAUDE.md](CLAUDE.md): the full project specification and rules

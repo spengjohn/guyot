@@ -38,7 +38,7 @@ A free, open web app for running a supervised job search. Named for the Guyot me
 
 - React + TypeScript + Vite. Hash routing (`/#/tracker`) so reloads work on static hosting.
 - IndexedDB for local storage. JSON export and import.
-- ESLint (with jsx-a11y) + Prettier. CI runs `npm run lint`, `npm run format:check`, `npm test` and `npm run build`; a failure blocks deploy.
+- ESLint (with jsx-a11y) + Prettier. CI runs `npm run lint`, `npm run format:check`, `npm test`, `npm run build`, `npm run audit` and a gitleaks secret scan on every push; a failure blocks deploy.
 - Vitest for tests, with fake-indexeddb for storage tests (both dev only).
 - Prettier style: no semicolons, single quotes, trailing commas, 100-character lines.
 
@@ -49,8 +49,11 @@ A free, open web app for running a supervised job search. Named for the Guyot me
 - `npm run format` format all files
 - `npm test` run tests once
 - `npm run build` type-check and build
+- `npm run test:security` run only the security tests
+- `npm run audit` check dependencies for known vulnerabilities
+- `npm run test:e2e` build, serve and run the browser checks (see docs/browser-checks.md)
 
-Run lint, format:check, test and build before considering a change done.
+Run lint, format:check, test and build before considering a change done. For UI changes, also run `npm run test:e2e` and look at `test-results/review/`.
 
 ## Documentation
 
@@ -60,6 +63,8 @@ Keep the docs current as part of each change, not afterwards:
 - **Status:** at the end of each build step, update `docs/status.md`: what was built, what was deferred and why, known limits, what's next.
 - **Data layer:** when files, flows or rule coverage in `src/data/` change, update `docs/data-layer.md`.
 - **Theme:** when a token, color or shared component style changes, update `docs/theme.md` and the contrast rules in `src/styles/tokens.test.ts`.
+- **Security:** when a change adds a new input, secret or outside connection, update `docs/security.md` and add tests to `src/security/` (or the browser security check). At the end of each build step, run the adversarial review in `docs/security.md`.
+- **Browser checks:** when a screen or main flow is added or changed, add or update its check in `e2e/` and keep `docs/browser-checks.md` current.
 - **TypeScript notes:** when a new TypeScript concept first appears, add it to `docs/typescript-notes.md` with an example from the code.
 
 ## Data model

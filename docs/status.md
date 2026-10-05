@@ -115,6 +115,20 @@ Known limits added in 2b:
 
 Deferred: a "use device setting" option for the toggle (once toggled, the choice sticks); status markers; chart colors (2c); AI badges (step 5).
 
+### After 2b: automated security checks
+
+- Security checks on every push ([ADR 0019](decisions/0019-automated-security-checks.md); the guide is [security.md](security.md)): lint rules against HTML injection, code from strings, web storage and stray logs; `npm audit`; a gitleaks scan of the whole git history. CI now checks every push and deploys only from main after the checks pass.
+- Security tests in [src/security/](../src/security/) for import, restore and encrypted exports (72 tests, fed by a shared list of hostile inputs). They found no problems in the current code.
+
+Deferred: a Content Security Policy, until the AI and sync steps settle which hosts the app must reach (see [security.md](security.md)).
+
+### After 2b: automated browser checks
+
+- Browser checks with Playwright and axe-core ([ADR 0018](decisions/0018-browser-checks.md); the guide is [browser-checks.md](browser-checks.md)), run with `npm run test:e2e`: automated accessibility rules on every screen in light and dark, keyboard reach and visible focus, the skip link, hash-routing reloads, 320px reflow, 200% text, the Applications add / delete / undo / restore flows, the browser security check, and review screenshots in `test-results/review/`.
+- Finding fixed: at 320px the header nav row was a few pixels too wide on Linux font metrics, so some screens scrolled sideways. The nav list now wraps.
+
+Deferred: running them in GitLab CI (a `check` stage job on the Playwright image); pixel-diff screenshot tests (baselines differ between Windows and Linux). Still needs a person: screen reader passes, real zoom and the look of each screen (see [browser-checks.md](browser-checks.md)).
+
 ### Next: 2c
 
 The dashboard: KPI tiles, the goal tracker with pace, charts, a "needs attention" list, and job description snapshots. A plan will be shown before work starts.

@@ -147,6 +147,7 @@ function setKey<K extends EditableKey>(draft: ApplicationDraft, key: K, value: A
 - **`class`** groups data with the functions that use it. `Repo.open()` creates one; `repo.update(...)` calls a method. `private` members are usable only inside the class.
 - **`import type`**: imports used only as types are removed from the built JavaScript. Our config requires saying so.
 - **`async` and `Promise<T>`**: an `async` function returns a promise of a value that arrives later; `await` waits for it. `Promise<Live<T>>` is "later, a live record of table T".
+- **`async` / `await` in tests**: browser actions take time, so each Playwright call returns a Promise and `await` waits for it before the next line runs. Forgetting `await` makes a test race ahead of the page.
 - **Triple-slash reference (`/// <reference types="node" />`)**: adds a set of type definitions to one file only. App code is typed for the browser, which has no file system; `tokens.test.ts` runs in Node and reads the CSS file, so it opts in to Node's types (`node:fs`) on its first line instead of giving them to the whole app.
 
 # React notes

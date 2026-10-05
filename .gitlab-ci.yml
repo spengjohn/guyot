@@ -1,12 +1,37 @@
-# Checks the code, builds the Vite app, and publishes it to GitLab Pages
-# on every push to the default branch (main).
-pages:
+# Checks every push, then builds the Vite app and publishes it to GitLab Pages
+# from the default branch (main). Any failed check blocks the deploy.
+stages:
+  - check
+  - deploy
+
+checks:
+  stage: check
   image: node:lts
   script:
     - npm ci
     - npm run lint
     - npm run format:check
     - npm test
+    - npm run build
+    # Known vulnerabilities in dependencies. See docs/security.md if this fails.
+    - npm run audit
+
+secrets:
+  stage: check
+  image:
+    name: ghcr.io/gitleaks/gitleaks:v8.28.0
+    entrypoint: ['']
+  variables:
+    GIT_DEPTH: 0 # scan the whole history, not just the latest commit
+  script:
+    # Fails if an API key, token or private key was ever committed.
+    - gitleaks git --redact --no-banner --verbose .
+
+pages:
+  stage: deploy
+  image: node:lts
+  script:
+    - npm ci
     - npm run build
     # GitLab Pages serves the "public" folder, but Vite builds to "dist".
     # Vite's own public/ assets are already copied into dist, so swap them.
