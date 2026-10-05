@@ -1,7 +1,7 @@
 import { LIMITS } from './constants'
 import type { ChoiceId } from './types/core'
 import type { BuiltinField, ChoiceOption } from './types/fields'
-import type { ApplicationData } from './types/tables'
+import type { ApplicationData, SearchProfileData, SharedTargetsFields } from './types/tables'
 
 /**
  * The Status options. Their IDs are fixed and stored in records, so they never change;
@@ -56,6 +56,94 @@ export const APPLICATION_FIELDS: readonly (BuiltinField & { key: ApplicationFiel
     readOnly: true,
   },
 ]
+
+// ---------- Targets ----------
+
+/** Fixed option IDs, like Status: labels may change, IDs never do (docs/decisions/0013). */
+export const EMPLOYMENT_TYPES = {
+  fullTime: { label: 'Full time', order: 1, hidden: false },
+  partTime: { label: 'Part time', order: 2, hidden: false },
+  contract: { label: 'Contract', order: 3, hidden: false },
+  temporary: { label: 'Temporary', order: 4, hidden: false },
+  internship: { label: 'Internship', order: 5, hidden: false },
+  freelance: { label: 'Freelance', order: 6, hidden: false },
+} as const satisfies Record<string, ChoiceOption>
+
+export const WORK_MODES = {
+  onSite: { label: 'On-site', order: 1, hidden: false },
+  hybrid: { label: 'Hybrid', order: 2, hidden: false },
+  remote: { label: 'Remote', order: 3, hidden: false },
+} as const satisfies Record<string, ChoiceOption>
+
+export const PRIORITIES = {
+  high: { label: 'High', order: 1, hidden: false },
+  medium: { label: 'Medium', order: 2, hidden: false },
+  low: { label: 'Low', order: 3, hidden: false },
+} as const satisfies Record<string, ChoiceOption>
+
+type ProfileFieldKey = Exclude<keyof SearchProfileData, 'custom' | 'overrides' | 'customOverrides'>
+
+/** The built-in search profile fields, in form and column order. */
+export const SEARCH_PROFILE_FIELDS: readonly (BuiltinField & { key: ProfileFieldKey })[] = [
+  { key: 'name', label: 'Name', type: 'text', required: true, maxLength: LIMITS.shortText },
+  { key: 'term', label: 'Term', type: 'text', required: false, maxLength: LIMITS.shortText },
+  {
+    key: 'employmentTypes',
+    label: 'Employment types',
+    type: 'choiceList',
+    required: false,
+    choices: EMPLOYMENT_TYPES,
+  },
+  { key: 'locations', label: 'Locations', type: 'textList', required: false },
+  {
+    key: 'workModes',
+    label: 'Work modes',
+    type: 'choiceList',
+    required: false,
+    choices: WORK_MODES,
+  },
+  { key: 'minimumPay', label: 'Minimum pay', type: 'money', required: false },
+  { key: 'priority', label: 'Priority', type: 'choice', required: false, choices: PRIORITIES },
+  { key: 'active', label: 'Active', type: 'yesNo', required: true },
+  { key: 'notes', label: 'Notes', type: 'longText', required: false, maxLength: LIMITS.longText },
+]
+
+/** The built-in shared-target fields, in form order. Every profile can override each one. */
+export const SHARED_TARGET_FIELDS: readonly (BuiltinField & { key: keyof SharedTargetsFields })[] =
+  [
+    { key: 'roleTypes', label: 'Role types', type: 'textList', required: false },
+    { key: 'industries', label: 'Industries', type: 'textList', required: false },
+    {
+      key: 'prioritizeCompanies',
+      label: 'Companies to prioritize',
+      type: 'textList',
+      required: false,
+    },
+    { key: 'excludeCompanies', label: 'Companies to exclude', type: 'textList', required: false },
+    {
+      key: 'excludeRule',
+      label: 'Exclusion rule',
+      type: 'longText',
+      required: false,
+      hint: 'In your own words, which companies to skip (for example, "staffing agencies").',
+    },
+    { key: 'mustHaveKeywords', label: 'Must-have keywords', type: 'textList', required: false },
+    {
+      key: 'niceToHaveKeywords',
+      label: 'Nice-to-have keywords',
+      type: 'textList',
+      required: false,
+    },
+    { key: 'dealbreakers', label: 'Dealbreakers', type: 'textList', required: false },
+    {
+      key: 'eligibilityNotes',
+      label: 'Eligibility notes',
+      type: 'longText',
+      required: false,
+      hint: 'Personal. Sent to an AI only from stages that need it.',
+    },
+    { key: 'preferredSources', label: 'Preferred sources', type: 'textList', required: false },
+  ]
 
 /** Built-in columns hidden until the user shows them. */
 export const APPLICATION_HIDDEN_BY_DEFAULT: readonly ApplicationFieldKey[] = [

@@ -408,3 +408,75 @@ tbody th {
 .disclosure[aria-expanded='true']::before {
   content: '▾ ' / '';
 }
+
+/* ---------- Targets and Your data ---------- */
+
+.panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.panel > h2 {
+  margin-top: 0;
+}
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--surface);
+  font-weight: 600;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.check input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.check-list,
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+.override {
+  margin-bottom: 0.75rem;
+}
+.effective {
+  margin: 0 0 0.75rem;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+.facts div {
+  display: contents;
+}
+.facts dt {
+  font-weight: 600;
+}
+.facts dd {
+  margin: 0;
+}
+.import-result {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--accent);
+  background: var(--notice-bg);
+}
+.deleted-profiles {
+  margin-top: 1rem;
+}
+.deleted-profiles summary {
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+input[type='file'] {
+  border: none;
+  padding: 0;
+}

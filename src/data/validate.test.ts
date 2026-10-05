@@ -75,7 +75,7 @@ describe('validateRecord', () => {
       expect(check({ ...application(), status }).errors).toEqual([])
     }
     expect(check({ ...application(), status: 'ghosted' }).errors).toEqual([
-      'applications.status: not a Status option',
+      'applications.status: not a valid Status',
     ])
   })
 
@@ -206,6 +206,37 @@ describe('search profile overrides', () => {
         `searchProfiles.customOverrides.${FIELD}: overrides a field that is not a shared target (kept)`,
       ],
     })
+  })
+})
+
+describe('search profile choices', () => {
+  const PROFILE_ID = '77777777-7777-4777-8777-777777777777' as Uuid
+  const profile = (changes: Obj) =>
+    makeRecord(PROFILE_ID, { ...sampleProfile(), ...changes }, stamp)
+  const errors = (changes: Obj) =>
+    validateRecord('searchProfiles', profile(changes), noFields).errors
+
+  it('accepts the fixed options', () => {
+    expect(
+      errors({
+        employmentTypes: ['fullTime', 'contract'],
+        workModes: ['remote', 'hybrid'],
+        priority: 'high',
+      }),
+    ).toEqual([])
+    expect(errors({ priority: null })).toEqual([])
+  })
+
+  it('rejects anything else, item by item', () => {
+    expect(errors({ employmentTypes: ['fullTime', 'gig'] })).toEqual([
+      'searchProfiles.employmentTypes[1]: not a valid Employment type',
+    ])
+    expect(errors({ workModes: ['office'] })).toEqual([
+      'searchProfiles.workModes[0]: not a valid Work mode',
+    ])
+    expect(errors({ priority: 'urgent' })).toEqual([
+      'searchProfiles.priority: not a valid Priority',
+    ])
   })
 })
 

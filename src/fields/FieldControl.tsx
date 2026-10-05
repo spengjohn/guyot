@@ -1,9 +1,10 @@
 import { useId, useState, type ChangeEvent } from 'react'
 import { isCalendarDay, isTimeZone } from '../data/time'
 import type { CalendarDay, ChoiceId, ZonedMoment } from '../data/types/core'
-import type { Deadline, FieldValue } from '../data/types/fields'
+import type { Deadline, FieldValue, Money, PayPeriod } from '../data/types/fields'
 import { deviceTimeZone, momentToZonedTime, timeZoneNames, zonedTimeToMoment } from '../ui/dates'
 import type { FieldSpec } from './columns'
+import { linesToList, moneyFrom, type MoneyParts } from './parse'
 
 /**
  * Called with the new value. `problem` is set when the input holds something that
@@ -23,9 +24,26 @@ interface Props {
 
 /** A labeled input for one field, chosen by its type, with its hint and error message. */
 export function FieldControl(props: Props) {
-  if (props.field.type === 'deadline') return <DeadlineControl {...props} />
-  if (props.field.type === 'dateTime') return <DateTimeControl {...props} />
-  return <SimpleControl {...props} />
+  // The field's own hint (e.g. "Personal…") and the form's (e.g. an overwrite warning).
+  const hint = [props.field.hint, props.hint].filter(Boolean).join(' ') || undefined
+  const all = { ...props, hint }
+  switch (props.field.type) {
+    case 'deadline':
+      return <DeadlineControl {...all} />
+    case 'dateTime':
+      return <DateTimeControl {...all} />
+    case 'textList':
+      return <TextListControl {...all} />
+    case 'choiceList':
+      return <ChoiceListControl {...all} />
+    case 'money':
+      return <MoneyControl {...all} />
+    case 'yesNo':
+      // A required yes/no can't be empty, so it's a plain checkbox.
+      return props.field.required ? <CheckboxControl {...all} /> : <SimpleControl {...all} />
+    default:
+      return <SimpleControl {...all} />
+  }
 }
 
 /**
@@ -390,6 +408,182 @@ function DeadlineControl({ field, value, onChange, error, hint }: Props) {
         />
       )}
       <HelpText baseId={id} error={error} hint={hint} />
+    </fieldset>
+  )
+}
+
+// ---------- Lists, checkboxes and money ----------
+
+/**
+ * A list typed one item per line. The text is kept as typed while the user edits
+ * (rebuilding it from the list would swallow the new line they just started); the list
+ * itself is recomputed on every change.
+ */
+function TextListControl({ field, value, onChange, error, hint }: Props) {
+  const id = useId()
+  const [text, setText] = useState(() => ((value as string[] | null) ?? []).join('\n'))
+  const help = ['One per line.', hint].filter(Boolean).join(' ')
+  return (
+    <div className="field">
+      <label htmlFor={id}>
+        <LabelText field={field} />
+      </label>
+      <textarea
+        id={id}
+        rows={4}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          onChange(linesToList(e.target.value))
+        }}
+        {...ariaFor(id, { error, hint: help, required: field.required })}
+      />
+      <HelpText baseId={id} error={error} hint={help} />
+    </div>
+  )
+}
+
+/** Choices where several can be picked: a group of checkboxes, in option order. */
+function ChoiceListControl({ field, value, onChange, error, hint }: Props) {
+  const id = useId()
+  const selected = (value as string[] | null) ?? []
+  const options = choiceOptions(field, null)
+  // Values this device doesn't know (from a newer version) are kept and shown.
+  for (const unknown of selected.filter((v) => !options.some(([optionId]) => optionId === v))) {
+    options.push([unknown, `Unknown option (${unknown})`])
+  }
+  const toggle = (optionId: string, on: boolean) => {
+    const next = options
+      .map(([optionId2]) => optionId2)
+      .filter((o) => (o === optionId ? on : selected.includes(o)))
+    onChange(next as ChoiceId[])
+  }
+  return (
+    <fieldset className="field-group" {...ariaFor(id, { error, hint, required: false })}>
+      <legend>
+        <LabelText field={field} />
+      </legend>
+      <div className="check-list">
+        {options.map(([optionId, label]) => (
+          <div key={optionId} className="check">
+            <input
+              type="checkbox"
+              id={`${id}-${optionId}`}
+              checked={selected.includes(optionId)}
+              onChange={(e) => toggle(optionId, e.target.checked)}
+            />
+            <label htmlFor={`${id}-${optionId}`}>{label}</label>
+          </div>
+        ))}
+      </div>
+      <HelpText baseId={id} error={error} hint={hint} />
+    </fieldset>
+  )
+}
+
+/** A required yes/no: one checkbox. Never marked required: unticked is a valid answer. */
+function CheckboxControl({ field, value, onChange, error, hint }: Props) {
+  const id = useId()
+  return (
+    <div className="field check">
+      <input
+        type="checkbox"
+        id={id}
+        checked={value === true}
+        onChange={(e) => onChange(e.target.checked)}
+        {...ariaFor(id, { error, hint, required: false })}
+      />
+      <label htmlFor={id}>{field.label}</label>
+      <HelpText baseId={id} error={error} hint={hint} />
+    </div>
+  )
+}
+
+const PERIOD_LABELS: Record<PayPeriod, string> = {
+  hour: 'per hour',
+  day: 'per day',
+  week: 'per week',
+  month: 'per month',
+  year: 'per year',
+}
+
+let currencyList: string[] | undefined
+
+/** Every currency code the browser knows, built on first use and then reused. */
+function allCurrencies(): string[] {
+  currencyList ??= Intl.supportedValuesOf('currency')
+  return currencyList
+}
+
+/** An amount, a period and a currency. Leave the amount empty for no minimum. */
+function MoneyControl({ field, value, onChange, error, hint }: Props) {
+  const id = useId()
+  const money = value as Money | null
+  const [parts, setParts] = useState<MoneyParts>(() => ({
+    amount: money ? String(money.amount) : '',
+    period: money?.period ?? 'year',
+    currency: money?.currency ?? 'USD',
+  }))
+  const aria = ariaFor(id, { error, hint, required: field.required })
+  const update = (next: MoneyParts) => {
+    setParts(next)
+    const { value: result, problem } = moneyFrom(next)
+    onChange(result, problem)
+  }
+  return (
+    <fieldset className="field-group">
+      <legend>
+        <LabelText field={field} />
+      </legend>
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor={`${id}-amount`}>Amount</label>
+          <input
+            id={`${id}-amount`}
+            type="number"
+            min={0}
+            step="any"
+            inputMode="decimal"
+            value={parts.amount}
+            onChange={(e) => update({ ...parts, amount: e.target.value })}
+            {...aria}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor={`${id}-period`}>Period</label>
+          <select
+            id={`${id}-period`}
+            value={parts.period}
+            onChange={(e) => update({ ...parts, period: e.target.value as PayPeriod })}
+            {...aria}
+          >
+            {Object.entries(PERIOD_LABELS).map(([period, label]) => (
+              <option key={period} value={period}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor={`${id}-currency`}>Currency</label>
+          <input
+            id={`${id}-currency`}
+            list={`${id}-currencies`}
+            value={parts.currency}
+            onChange={(e) => update({ ...parts, currency: e.target.value })}
+            autoComplete="off"
+            spellCheck={false}
+            size={5}
+            {...aria}
+          />
+          <datalist id={`${id}-currencies`}>
+            {allCurrencies().map((code) => (
+              <option key={code} value={code} />
+            ))}
+          </datalist>
+        </div>
+      </div>
+      <HelpText baseId={id} error={error} hint={hint ?? 'Leave the amount empty for no minimum.'} />
     </fieldset>
   )
 }

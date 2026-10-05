@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MouseEvent } from 'react'
 import { DashboardPage } from '../pages/DashboardPage'
+import { DataPage } from '../pages/DataPage'
 import { DeletedPage } from '../pages/DeletedPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { TargetsPage } from '../pages/TargetsPage'
@@ -11,6 +12,7 @@ const NAV: { label: string; route: Route; current: Route['page'][] }[] = [
   { label: 'Tracker', route: { page: 'tracker' }, current: ['tracker', 'deleted'] },
   { label: 'Targets', route: { page: 'targets' }, current: ['targets'] },
   { label: 'Dashboard', route: { page: 'dashboard' }, current: ['dashboard'] },
+  { label: 'Your data', route: { page: 'data' }, current: ['data'] },
 ]
 
 function pageFor(route: Route) {
@@ -24,6 +26,8 @@ function pageFor(route: Route) {
       return <TargetsPage />
     case 'dashboard':
       return <DashboardPage />
+    case 'data':
+      return <DataPage />
     case 'notFound':
       return <NotFoundPage />
     default: {

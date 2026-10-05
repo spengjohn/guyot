@@ -7,6 +7,7 @@ export type Route =
   | { page: 'deleted' } // recently deleted applications
   | { page: 'targets' }
   | { page: 'dashboard' }
+  | { page: 'data' } // export, import and backups
   | { page: 'notFound' }
 
 const PATHS: Record<Route['page'], string> = {
@@ -14,6 +15,7 @@ const PATHS: Record<Route['page'], string> = {
   deleted: '/tracker/deleted',
   targets: '/targets',
   dashboard: '/dashboard',
+  data: '/data',
   notFound: '/not-found',
 }
 

@@ -165,7 +165,7 @@ React builds the page from **components**: functions that take **props** (inputs
 
 - **Lists need `key`.** When rendering an array, each item gets a stable `key` (a record `id`), so React can tell which item moved or changed instead of rebuilding them all. Rows use `key={app.id}`; columns use the field key.
 - **Changing `key` resets a component.** A new key makes React discard the old component and start a fresh one, with fresh state. The Edit form uses this on purpose (`controlKey` in applicationForm.ts): when a save elsewhere replaces the value an untouched field shows, its input gets a new key and starts over from the new value.
-- **Live regions inside a modal dialog.** While a dialog is open with `showModal()`, everything outside it is inert, including the app's live region, so screen readers ignore it. The Edit dialog has its own `role="status"` regions for messages shown while it's open.
+- **Live regions inside a modal dialog.** While a dialog is open with `showModal()`, everything outside it is inert, including the app's live region, so screen readers ignore it. Each dialog renders its own `role="status"` regions (`ChangesNotice` in `src/forms/FormParts.tsx`).
 - **Conditional rendering.** `{notice && <div>...</div>}` shows the element only when `notice` is set.
 
 ## State and effects
@@ -185,3 +185,12 @@ React builds the page from **components**: functions that take **props** (inputs
 - **`useSyncExternalStore`** connects state that lives outside React (here, the URL hash) to a component: given a way to subscribe to changes (`hashchange`) and a way to read the current value, it re-renders when the value changes (`useHashRoute.ts`).
 - **Rules of hooks.** Hooks are called at the top of a component, in the same order every render: never inside `if`, loops or after an early `return`. That's why `TrackerPage` calls all its hooks before returning the loading message. ESLint checks this.
 - **Fast refresh.** In development, Vite swaps edited components in place. It only works if a `.tsx` file exports nothing but components, so contexts and hooks live in `.ts` files (`repoContext.ts`, `announce.ts`) next to their provider components.
+- **A generic custom hook.** `useEditForm<R extends SavedRecord>(options)` takes a type parameter like any generic function, so one hook serves applications, profiles and shared targets, each with its own record type: `useEditForm<SavedProfile>({ ... })`.
+- **One name per form, wherever the parts live.** `useEditForm` returns everything a form needs; the parts (`ChangesNotice`, `ConflictList`, `ErrorSummary` in `FormParts.tsx`) take that whole object as a `form` prop. Its type is written once with `ReturnType<typeof useEditForm>` (the type of whatever the function returns), so it never drifts from the hook.
+
+## Browser features
+
+- **`Blob` and object URLs** (`src/ui/download.ts`): a `Blob` is file-like data held in memory. `URL.createObjectURL(blob)` gives it a temporary `blob:` address; a link with that `href` and a `download` attribute, clicked from code, saves it as a file. Nothing is uploaded. `URL.revokeObjectURL` frees the memory afterwards.
+- **Reading a chosen file**: `<input type="file">` gives `event.target.files`, a list of `File` objects. `await file.text()` reads one as text in the browser (`DataPage.tsx`).
+- **`<details>` and `<summary>`**: a disclosure built into HTML (Recently deleted profiles). It opens and closes with the keyboard and tells screen readers whether it's expanded, with no script.
+- **`Extract<Union, Shape>`** (TypeScript): the members of a union that fit a shape. `Extract<ImportCheck, { ok: true }>` is just the successful import check, with its `file` and `preview`.

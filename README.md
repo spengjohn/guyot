@@ -17,7 +17,7 @@ You choose where your data lives and which AI (if any) helps. Guyot works fully 
 
 ## Status
 
-Early development. The data layer (build step 1) and the Applications tracker (step 2a) are done; the Targets screen is next. See [docs/status.md](docs/status.md).
+Early development. The data layer (build step 1), the Applications tracker (step 2a) and the Targets and Your data screens (step 2b) are done; the dashboard is next. See [docs/status.md](docs/status.md).
 
 ## Development
 

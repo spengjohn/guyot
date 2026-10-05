@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-04, at the end of build step 2a.
+Last updated: 2026-10-04, at the end of build step 2b.
 
 The build order is in [CLAUDE.md](../CLAUDE.md#build-order). This page tracks where each step stands.
 
@@ -46,11 +46,9 @@ Deferred, with reasons:
 
 | Item                                                     | Why it waits                                                           | Planned for     |
 | -------------------------------------------------------- | ---------------------------------------------------------------------- | --------------- |
-| Targets screen                                           | Step 2b                                                                | 2b              |
-| Restore from a backup                                    | Replaces all current data, so it needs a confirm screen                | 2b              |
 | Dashboard, goal progress and pace                        | Step 2c                                                                | 2c              |
 | Job description snapshots; Resume and JD columns editing | Snapshots come with the dashboard work; resumes with the Tailor stage  | 2c, step 7      |
-| Permanent removal ("Delete forever") in the UI           | Needs its own confirm step; soft delete covers everyday use            | 2b or later     |
+| Permanent removal ("Delete forever") in the UI           | Needs its own confirm step; soft delete covers everyday use            | Later in step 2 |
 | Undo for edits (not only deletes)                        | The change log supports it; the UI for skipped fields needs design     | Later in step 2 |
 | Creating custom fields                                   | Belongs to the pipeline editor; existing custom fields already display | Step 6          |
 | Sorting and filtering the table, saved views             | Not needed to start tracking; sorted newest Date Applied first         | Later in step 2 |
@@ -66,9 +64,35 @@ Known limits:
 - Damaged local settings fall back to the default column layout.
 - Conflict log entries for values removed from map fields (e.g. a cleared custom value) record the losing value as `null`.
 
-### Next: 2b
+### 2b: Targets screen, restore from backup, Your data page — done
 
-Targets screen (search profiles with override modes, shared targets) and restore from backup. A plan will be shown before work starts.
+Data layer:
+
+- **Search profile choices** with fixed IDs (Employment types, Work modes, Priority), checked like Status (ADR 0013). Built-in profile and shared-target fields in [builtinFields.ts](../src/data/builtinFields.ts). No format change: the stored shape is the same.
+- **Restore as edits** ([ADR 0015](decisions/0015-restore-as-edits.md)): `previewRestore` counts what a restore would do; `restoreBackup` saves a backup of the current data, then changes everything to match the backup as ordinary, logged edits (records made since go to Recently deleted; purged records stay gone). `createBackup` makes one on request.
+- **Import with a check first**: `checkImport` validates a file and returns a preview without writing; `mergeImport` merges it.
+
+Shared form plumbing ([src/forms/](../src/forms/)):
+
+- The edit tracking from 2a (edits over the latest saved record, conflicts, the stale check) is now generic: `editModel.ts` (pure), the `useEditForm` hook, and `FormParts.tsx` (notice, conflict comparison, error summary). Applications, profiles and shared targets all use it; the Applications tests passed unchanged.
+- New inputs: lists typed one per line, checkbox groups, minimum pay (amount, period, currency), and a single checkbox for a required yes/no.
+
+User interface:
+
+- **Targets** (`#/targets`): shared targets edited in place (with the same conflict handling), Eligibility notes marked personal, Last updated from the record. Search profiles in a table with Edit, Duplicate (saved only on Save) and Delete with Undo, plus Recently deleted profiles with Restore.
+- **Profile dialog**: the profile's fields, then "Override shared targets for this profile": each list field is Use shared, Add to shared or Replace, with a live "This profile will use: …" line; text and custom fields have an Override checkbox. Mode and items are saved together.
+- **Your data** (`#/data`, in the main navigation): download a copy (an export file), import a file (shown and checked before merging; a bad file is refused whole), and the automatic backups with Back up now, Download and Restore…; the restore dialog shows what will change, starts on Cancel, and announces the outcome.
+- 196 tests.
+
+Known limits added in 2b:
+
+- The restore's own backup can push the oldest of the five backups out, possibly the one just restored (its data has already been applied).
+- Lists are typed one per line, so an item can't contain a line break.
+- Minimum pay defaults to USD; the device's own currency isn't detected.
+
+### Next: 2c
+
+The dashboard: KPI tiles, the goal tracker with pace, charts, a "needs attention" list, and job description snapshots. A plan will be shown before work starts.
 
 ## Steps 3–9
 

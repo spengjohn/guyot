@@ -1,7 +1,14 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { SHARED_TARGETS_ID } from './constants'
-import { exportData, exportFileName, exportToJson, importJson } from './exportImport'
+import { SCHEMA_VERSION, SHARED_TARGETS_ID } from './constants'
+import {
+  checkImport,
+  exportData,
+  exportFileName,
+  exportToJson,
+  importJson,
+  mergeImport,
+} from './exportImport'
 import { at, sampleApplication, samplePosting } from './fixtures'
 import { Repo } from './repo'
 import type { Moment, Uuid } from './types/core'
@@ -45,6 +52,41 @@ describe('export and import', () => {
     expect(exportFileName(new Date(2026, 9, 3, 23, 30).getTime() as Moment)).toBe(
       'guyot-export-2026-10-03.json',
     )
+  })
+})
+
+describe('checkImport', () => {
+  it('shows what a file holds without changing anything', async () => {
+    const { repo: laptop } = await device()
+    await laptop.create('applications', sampleApplication())
+    const gone = await laptop.create('applications', {
+      ...sampleApplication(),
+      roleId: 'R002' as never,
+    })
+    await laptop.delete('applications', gone.id)
+    const json = await exportJson(laptop)
+
+    const { repo: phone } = await device()
+    const check = await checkImport(phone, json)
+    if (!check.ok) throw new Error(check.errors[0])
+    expect(check.preview).toEqual({
+      deviceId: laptop.deviceId,
+      exportedAt: expect.any(Number),
+      schemaVersion: SCHEMA_VERSION,
+      counts: { applications: 1 }, // deleted records and logs aren't counted
+    })
+    expect(await phone.list('applications')).toEqual([]) // nothing merged yet
+
+    expect(await mergeImport(phone, check.file)).toMatchObject({ ok: true })
+    expect(await phone.list('applications')).toHaveLength(1)
+  })
+
+  it('reports problems the same way importJson does', async () => {
+    const { repo } = await device()
+    expect(await checkImport(repo, '{not json')).toEqual({
+      ok: false,
+      errors: ['File: not valid JSON'],
+    })
   })
 })
 

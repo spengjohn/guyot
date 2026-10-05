@@ -67,6 +67,7 @@ export interface BuiltinField {
   type: FieldType
   required: boolean // must be filled in when entering data in a form; not enforced on stored records
   readOnly?: boolean // set by the app (Role ID) or by a later step's screen
+  hint?: string // shown under the input, e.g. that a field is personal
   maxLength?: number
   choices?: Readonly<Record<string, ChoiceOption>> // fixed IDs, e.g. status 'applied'
 }

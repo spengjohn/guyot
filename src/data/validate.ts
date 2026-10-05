@@ -1,5 +1,5 @@
 import { LIMITS, SCHEMA_VERSION, SHARED_TARGETS_ID, TABLE_NAMES, TABLE_SET } from './constants'
-import { STATUS_CHOICES } from './builtinFields'
+import { EMPLOYMENT_TYPES, PRIORITIES, STATUS_CHOICES, WORK_MODES } from './builtinFields'
 import { isCalendarDay, isTimeZone } from './time'
 import type {
   ChoiceOption,
@@ -126,7 +126,7 @@ const choiceList = arrayOf(choiceId)
  */
 function builtinChoice(label: string, choices: Readonly<Record<string, ChoiceOption>>): Check {
   return (v, path) =>
-    typeof v === 'string' && Object.hasOwn(choices, v) ? [] : [`${path}: not a ${label} option`]
+    typeof v === 'string' && Object.hasOwn(choices, v) ? [] : [`${path}: not a valid ${label}`]
 }
 
 const calendarDay: Check = (v, path) =>
@@ -374,11 +374,11 @@ const SCHEMAS: { [T in TableName]: TableSchema } = {
     fields: {
       name: shortText,
       term: shortText,
-      employmentTypes: choiceList,
+      employmentTypes: arrayOf(builtinChoice('Employment type', EMPLOYMENT_TYPES)),
       locations: textList,
-      workModes: choiceList,
+      workModes: arrayOf(builtinChoice('Work mode', WORK_MODES)),
       minimumPay: nullable(money),
-      priority: nullable(choiceId),
+      priority: nullable(builtinChoice('Priority', PRIORITIES)),
       active: bool,
       notes: longText,
     },

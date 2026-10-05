@@ -19,6 +19,13 @@ export interface FieldSpec {
   required: boolean
   choices?: Readonly<Record<string, ChoiceOption>>
   custom: boolean
+  /** Guidance shown under the input, such as that a field is personal. */
+  hint?: string
+  /**
+   * The fieldMeta key, when it isn't the usual one: an override is stored in a map, at
+   * 'overrides.<field>' or 'customOverrides.<fieldId>'. Usually omitted.
+   */
+  path?: string
 }
 
 export function builtinSpec(field: BuiltinField): FieldSpec {
@@ -30,6 +37,7 @@ export function builtinSpec(field: BuiltinField): FieldSpec {
     required: field.required,
     choices: field.choices,
     custom: false,
+    hint: field.hint,
   }
 }
 

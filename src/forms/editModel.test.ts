@@ -1,20 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { APPLICATION_FIELDS } from '../data/builtinFields'
-import { LAPTOP, PHONE, at, editField, makeRecord, sampleApplication } from '../data/fixtures'
+import { APPLICATION_FIELDS, SHARED_TARGET_FIELDS } from '../data/builtinFields'
+import {
+  LAPTOP,
+  PHONE,
+  at,
+  editField,
+  makeRecord,
+  sampleApplication,
+  sampleProfile,
+} from '../data/fixtures'
 import { stampEdit } from '../data/stamp'
 import type { CalendarDay, FieldId, Uuid } from '../data/types/core'
 import { builtinSpec, customSpec, type FieldSpec } from '../fields/columns'
+import { APPLICATION_REQUIRED_MESSAGES, newDraft } from '../tracker/applicationForm'
 import {
   fieldState,
   formErrors,
   keepMine,
   missingRequired,
-  newApplication,
-  newDraft,
+  newRecordData,
   saveRequest,
   takeSaved,
   withEdit,
-} from './applicationForm'
+} from './editModel'
 
 const ID = '33333333-3333-4333-8333-333333333333' as Uuid
 const FIELD = '11111111-1111-4111-8111-111111111111' as FieldId
@@ -113,14 +121,64 @@ describe('saveRequest', () => {
   })
 })
 
-describe('new applications', () => {
-  it('starts as Applied, today, and applies the edits', () => {
+describe('overrides (map entries that can be absent)', () => {
+  const roleTypes = SHARED_TARGET_FIELDS.find((f) => f.key === 'roleTypes')!
+  const override: FieldSpec = {
+    ...builtinSpec(roleTypes),
+    key: 'overrides.roleTypes',
+    path: 'overrides.roleTypes',
+  }
+  const excludeRule: FieldSpec = {
+    ...builtinSpec(SHARED_TARGET_FIELDS.find((f) => f.key === 'excludeRule')!),
+    key: 'overrides.excludeRule',
+    path: 'overrides.excludeRule',
+  }
+  const stamp = stampEdit(undefined, LAPTOP, at(9))
+  const profile = () =>
+    makeRecord(
+      ID,
+      {
+        ...sampleProfile(),
+        overrides: {
+          roleTypes: { mode: 'add' as const, items: ['UX'] },
+          excludeRule: 'No agencies',
+        },
+      },
+      stamp,
+    )
+
+  it('reads a missing override as undefined (use shared), not empty', () => {
+    const blank = makeRecord(ID, sampleProfile(), stamp)
+    expect(fieldState(override, {}, blank, blank).value).toBeUndefined()
+    expect(fieldState(override, {}, profile(), profile()).value).toEqual({
+      mode: 'add',
+      items: ['UX'],
+    })
+  })
+
+  it('saves mode and items as one value, and removes an override set back to shared', () => {
+    const opened = profile()
+    let edits = withEdit({}, override, { mode: 'replace', items: ['UX', 'Research'] }, opened)
+    edits = withEdit(edits, excludeRule, undefined, opened)
+    expect(saveRequest([override, excludeRule], edits, opened)).toEqual({
+      changes: { overrides: { roleTypes: { mode: 'replace', items: ['UX', 'Research'] } } },
+      expected: {
+        'overrides.roleTypes': opened.fieldMeta['overrides.roleTypes'],
+        'overrides.excludeRule': opened.fieldMeta['overrides.excludeRule'],
+      },
+    })
+  })
+})
+
+describe('new records', () => {
+  it('starts from the defaults and applies the edits', () => {
     const defaults = newDraft(today)
     const edits = withEdit(withEdit({}, notes, 'Hi', defaults), referral, 'Sam', defaults)
-    const data = newApplication(fields, edits, defaults)
+    const data = newRecordData(fields, edits, defaults)
     expect(data).toMatchObject({ status: 'applied', dateApplied: today, notes: 'Hi' })
     expect(data.custom).toEqual({ [FIELD]: 'Sam' })
     expect(data).not.toHaveProperty('fieldMeta')
+    expect(defaults.custom).toEqual({}) // the defaults themselves are untouched
   })
 })
 
@@ -131,7 +189,11 @@ describe('missingRequired', () => {
 
   it('lists empty and blank required fields, with what to do', () => {
     expect(
-      missingRequired([...required, notes], values({ company: '  ', status: 'applied' })),
+      missingRequired(
+        [...required, notes],
+        values({ company: '  ', status: 'applied' }),
+        APPLICATION_REQUIRED_MESSAGES,
+      ),
     ).toEqual({
       company: 'Enter the company',
       role: 'Enter the role',
@@ -148,19 +210,23 @@ describe('missingRequired', () => {
     })
     expect(missingRequired([...required, notes, referral], filled)).toEqual({})
   })
+
+  it('falls back to a general message', () => {
+    expect(missingRequired([spec('company')], values({}))).toEqual({ company: 'Fill in Company' })
+  })
 })
 
 describe('formErrors', () => {
   it('puts each error beside its field, with the field label', () => {
-    const custom = new Map([[FIELD, 'Referral']])
     const result = formErrors(
+      'applications',
       [
         'applications.listing: expected a web link',
         'applications.dateApplied: expected a date (YYYY-MM-DD)',
         `applications.custom.${FIELD}: expected yes/no`,
         'applications.updatedAt: must match the newest field stamp',
       ],
-      custom,
+      [spec('listing'), spec('dateApplied'), referral],
     )
     expect(result).toEqual({
       byField: {
@@ -169,6 +235,34 @@ describe('formErrors', () => {
         [FIELD]: 'Referral: expected yes/no',
       },
       general: ['applications.updatedAt: must match the newest field stamp'],
+    })
+  })
+
+  it('finds nested and override paths', () => {
+    const pay = builtinSpec({
+      key: 'minimumPay',
+      label: 'Minimum pay',
+      type: 'money',
+      required: false,
+    })
+    const override: FieldSpec = {
+      ...pay,
+      key: 'overrides.roleTypes',
+      label: 'Role types',
+      path: 'overrides.roleTypes',
+    }
+    expect(
+      formErrors(
+        'searchProfiles',
+        [
+          'searchProfiles.minimumPay.currency: expected a currency code like USD',
+          'searchProfiles.overrides.roleTypes.items[0]: longer than 1000 characters',
+        ],
+        [pay, override],
+      ).byField,
+    ).toEqual({
+      minimumPay: 'Minimum pay: expected a currency code like USD',
+      'overrides.roleTypes': 'Role types: longer than 1000 characters',
     })
   })
 })

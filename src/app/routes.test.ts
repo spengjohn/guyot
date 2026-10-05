@@ -17,7 +17,7 @@ describe('routes', () => {
   })
 
   it('builds links that parse back to the same route', () => {
-    for (const page of ['tracker', 'deleted', 'targets', 'dashboard'] as const) {
+    for (const page of ['tracker', 'deleted', 'targets', 'dashboard', 'data'] as const) {
       expect(parseRoute(hrefFor({ page }))).toEqual({ page })
     }
   })

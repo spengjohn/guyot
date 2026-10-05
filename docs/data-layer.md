@@ -31,6 +31,7 @@ Guyot has no server. The same data may be edited on several devices, offline, an
 | [repo.ts](../src/data/repo.ts)                   | All reads and writes: stamping, validation, logging, undo, merging            |
 | [exportImport.ts](../src/data/exportImport.ts)   | JSON export and import                                                        |
 | [backup.ts](../src/data/backup.ts)               | Local backups (newest five kept)                                              |
+| [restore.ts](../src/data/restore.ts)             | Planning a restore: what to change, delete and skipped. Pure                  |
 | [migrate.ts](../src/data/migrate.ts)             | Upgrading old data and old export files to the current format                 |
 | [fixtures.ts](../src/data/fixtures.ts)           | Test helpers only                                                             |
 
@@ -69,7 +70,9 @@ A profile's `overrides` map holds built-in shared fields by name; `customOverrid
 - `create(table, data, { assignRoleId: true })` gives a posting-linked record the next Role ID inside the same transaction, so a create that fails validation leaves the counter alone.
 - `update(table, id, changes, { expected })` saves only if every field it would change still has the stamp the form saw (or no stamp, for `null`); otherwise it saves nothing and throws `StaleEditError` naming the fields ([ADR 0014](decisions/0014-stale-edit-check.md)).
 - `delete` and `restore` return the change log ID of the change (or `null` if nothing changed); pass it to `undo(changeId)`.
-- `list` and `listDeleted` feed the table and the Recently deleted page.
+- `list` and `listDeleted` feed the tables and the Recently deleted lists.
+- `getSharedTargets` gives the one shared-targets record (made on first use) for the Targets page.
+- `listBackups`, `getBackup`, `createBackup`, `previewRestore` and `restoreBackup` serve the Your data page, with `checkImport` and `mergeImport` from [exportImport.ts](../src/data/exportImport.ts).
 
 The UI never writes to IndexedDB directly: every write goes through `Repo`, through the `useRepoWrite` hook in [src/app/repoContext.ts](../src/app/repoContext.ts), which tells every on-screen query to reload afterwards. It also posts a "changed" message on a `BroadcastChannel` named after the database, so other open tabs reload too ([RepoProvider.tsx](../src/app/RepoProvider.tsx)). The message carries no data: each tab reads the new state from IndexedDB itself.
 
@@ -87,15 +90,26 @@ Inside a transaction, the code waits only on IndexedDB requests. Waiting on anyt
 
 ## How an import flows
 
-`importJson(repo, text)`:
+`importJson(repo, text)` is `checkImport` followed by `mergeImport`; the Your data page calls them separately so the user sees the file first:
 
-1. Refuses very large files, parses JSON, and upgrades files from older versions (`upgradeFile`).
-2. Validates the entire file. Any error rejects it whole.
-3. Merges every record in **one transaction** (`saveMergedMany`), field definitions first. For each record: merge with the local copy, log real conflicts (with IDs every device agrees on), scrub log entries about purged records, log the change.
+1. `checkImport`: refuses very large files, parses JSON, and upgrades files from older versions (`upgradeFile`).
+2. Validates the entire file. Any error rejects it whole. Nothing has been written yet; the result includes a preview (source device, export time, format, record counts).
+3. `mergeImport`: merges every record in **one transaction** (`saveMergedMany`), field definitions first. For each record: merge with the local copy, log real conflicts (with IDs every device agrees on), scrub log entries about purged records, log the change.
 4. Renumbers any Role ID collisions.
 5. If anything fails, the whole transaction is rolled back.
 
 Sync (build step 3) will reuse steps 2–5 for other devices' files.
+
+## How a restore flows
+
+`repo.restoreBackup(backupId)` ([ADR 0015](decisions/0015-restore-as-edits.md)):
+
+1. Reads the backup, upgrades it to the current format, and validates it like an import file.
+2. Saves a backup of the current data (its own transaction), so the restore can be reversed.
+3. In one transaction, `planRestore` compares every current record with the backup's, and the plan is applied as ordinary edits: changed records get the backup's values (newly stamped), records created since are soft-deleted, records purged since are skipped, shared targets missing from the backup are reset. Each change is logged. Role ID collisions are renumbered.
+4. If anything fails, nothing changes.
+
+`repo.previewRestore(backupId)` runs steps 1 and 3's planning only, and returns the counts for the confirm screen.
 
 ## Where each rule is tested
 
@@ -113,5 +127,7 @@ Sync (build step 3) will reuse steps 2–5 for other devices' files.
 | Profile overrides and effective targets      | [targets.test.ts](../src/data/targets.test.ts); validate.test.ts and repo.test.ts "search profile overrides"                                                            |
 | Built-in Status options                      | validate.test.ts "accepts every Status option and rejects anything else"                                                                                                |
 | Local settings                               | validate.test.ts "validateLocalSettings"; repo.test.ts "local settings"                                                                                                 |
+| Restore as edits                             | [restore.test.ts](../src/data/restore.test.ts)                                                                                                                          |
+| Import checked before merging                | exportImport.test.ts "checkImport"                                                                                                                                      |
 | Stale edits refused                          | repo.test.ts "refuses a stale edit"; App.test.tsx "editing the same application in two tabs"                                                                            |
 | Goals                                        | validate.test.ts and repo.test.ts "goals"                                                                                                                               |

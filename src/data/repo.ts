@@ -5,12 +5,13 @@ import {
   SHARED_TARGETS_ID,
   TABLE_NAMES,
 } from './constants'
-import { getBackup, listBackups, type Backup, type BackupInfo } from './backup'
+import { createBackup, getBackup, listBackups, type Backup, type BackupInfo } from './backup'
 import { META_STORE, openDatabase, request, SETTINGS_STORE, transactionDone } from './db'
-import { migrateDatabase, type Migrations } from './migrate'
+import { migrateDatabase, upgradeFile, type Migrations } from './migrate'
 import { emptyLocalSettings, emptySharedTargets } from './defaults'
 import { deterministicId, formatRoleId, newId, roleNumber } from './ids'
 import { getValue, jsonEqual, mergeRecords, type ConflictDraft } from './merge'
+import { planRestore, RESTORE_TABLES, summarize, type RestoreSummary } from './restore'
 import { compareStamps, defaultStamp, sameStamp, stampEdit } from './stamp'
 import { now } from './time'
 import type { DeviceId, JsonValue, Moment, RoleId, Uuid } from './types/core'
@@ -27,6 +28,7 @@ import type {
   ChangeAction,
   ChangeLogData,
   ConflictLogData,
+  ExportFile,
   LocalSettings,
   Meta,
   RecordOf,
@@ -37,6 +39,7 @@ import type {
 import {
   mapFieldsOf,
   SYNC_KEYS,
+  validateExportFile,
   validateLocalSettings,
   validateRecord,
   type ValidationContext,
@@ -165,6 +168,79 @@ export class Repo {
   /** One backup, including its data as export-file JSON (for download). */
   getBackup(id: Uuid): Promise<Backup | undefined> {
     return getBackup(this.db, id)
+  }
+
+  /** Saves a backup of all data now (the newest few are kept). */
+  createBackup(reason: string): Promise<BackupInfo> {
+    return createBackup(this.db, this.deviceId, SCHEMA_VERSION, reason, this.clock())
+  }
+
+  /** What restoring a backup would change, without changing anything. */
+  async previewRestore(backupId: Uuid): Promise<RestoreSummary> {
+    const file = await this.readBackupFile(backupId)
+    const current: Partial<Record<TableName, Obj[]>> = {}
+    for (const table of RESTORE_TABLES)
+      current[table] = (await this.getAll(table)) as unknown as Obj[] // plain objects for the planner
+    return summarize(planRestore(current, file))
+  }
+
+  /**
+   * Makes the data match a backup, as new edits (docs/decisions/0015). First saves a
+   * backup of the data as it is now, so the restore itself can be undone by restoring
+   * that one. Then changes everything in one transaction: if anything fails, nothing
+   * changes. Each change is logged (and undoable) like any edit, and syncs like one.
+   */
+  async restoreBackup(
+    backupId: Uuid,
+    options: WriteOptions = {},
+  ): Promise<RestoreSummary & { backupId: Uuid }> {
+    const file = await this.readBackupFile(backupId)
+    const made = new Date(file.exportedAt).toISOString().slice(0, 16).replace('T', ' ')
+    const before = await createBackup(
+      this.db,
+      this.deviceId,
+      SCHEMA_VERSION,
+      `Before restoring the backup from ${made} UTC`,
+      this.clock(),
+    )
+    const summary = await this.write(async (tx, ctx) => {
+      const current: Partial<Record<TableName, Obj[]>> = {}
+      for (const table of RESTORE_TABLES) {
+        current[table] = (await request(tx.objectStore(table).getAll())) as Obj[]
+      }
+      const plan = planRestore(current, file)
+      // Field definitions first, so values restored after them are checked against them.
+      const ordered = [...plan.changes].sort(
+        (a, b) => Number(b.table === 'fieldDefinitions') - Number(a.table === 'fieldDefinitions'),
+      )
+      for (const { table, id, data } of ordered) {
+        const action = data.deleted === false ? 'restore' : 'update'
+        await this.change(tx, ctx, table, id, data, action, options)
+      }
+      if (plan.resetSharedTargets) {
+        const empty = emptySharedTargets() as unknown as Obj
+        await this.change(tx, ctx, 'sharedTargets', SHARED_TARGETS_ID, empty, 'update', options)
+      }
+      for (const { table, id } of plan.deletions) {
+        await this.change(tx, ctx, table, id, { deleted: true }, 'delete', options)
+      }
+      await this.renumberCollisions(tx, ctx, options) // restored Role IDs may clash with newer ones
+      return summarize(plan)
+    })
+    return { ...summary, backupId: before.id }
+  }
+
+  /** A backup's data, upgraded to the current format and fully validated. */
+  private async readBackupFile(backupId: Uuid): Promise<ExportFile> {
+    const backup = await getBackup(this.db, backupId)
+    if (!backup) throw new Error('That backup no longer exists.')
+    const localFields = new Map<string, FieldDefinitionData>()
+    for (const def of await this.getAll('fieldDefinitions')) {
+      if (!def.purged) localFields.set(def.id, def as unknown as FieldDefinitionData)
+    }
+    const result = validateExportFile(upgradeFile(JSON.parse(backup.json)), localFields)
+    if (!result.ok) throw new ValidationError(result.errors)
+    return result.file
   }
 
   // ---------- Local settings ----------
