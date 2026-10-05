@@ -143,6 +143,7 @@ Applications columns: Date Applied, Last Update, Listing, Job Description (snaps
 - Core backends: local only (default), Google Drive (build first), Dropbox, OneDrive. Stretch: S3-compatible, Nextcloud/WebDAV.
 - Sign-in to cloud storage uses browser OAuth with PKCE. No server.
 - Data is encrypted with the user's passphrase (Web Crypto, AES-GCM) before it leaves the browser. A lost passphrase cannot be recovered; the UI must say so.
+- Exports and downloaded backups are encrypted by default. An unencrypted download is possible only after a warning that it is strongly recommended against (see docs/decisions/0016). Backups inside the browser stay unencrypted, like the live data beside them.
 - Each device writes only its own file (for example `device-abc123.json`) and merges others field by field using the same merge as JSON import.
 - API keys sync only if the user opts in, inside the encrypted file.
 - Local-only data is tied to the exact site address. Before any domain change (for example to guyot.app), build an export/import "move" flow.

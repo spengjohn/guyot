@@ -21,6 +21,8 @@ export type BackupInfo = Omit<Backup, 'json'>
 /**
  * Copies every record, exactly as stored, into a new backup. Runs in its own
  * transaction so the backup is safely saved before anything risky starts.
+ * Only the newest few are kept. `keep` names a backup that must not be pruned, such
+ * as the one about to be restored (docs/decisions/0015).
  */
 export async function createBackup(
   db: IDBDatabase,
@@ -28,6 +30,7 @@ export async function createBackup(
   schemaVersion: number,
   reason: string,
   at: Moment,
+  keep?: Uuid,
 ): Promise<BackupInfo> {
   const tx = db.transaction([...TABLE_NAMES, BACKUPS_STORE], 'readwrite')
   const done = transactionDone(tx)
@@ -44,10 +47,12 @@ export async function createBackup(
   const store = tx.objectStore(BACKUPS_STORE)
   await request(store.put(backup))
 
-  // Keep only the newest few.
+  // Keep only the newest few, always including `keep` if it exists.
   const all = (await request(store.getAll())) as Backup[]
-  all.sort((a, b) => b.createdAt - a.createdAt)
-  for (const old of all.slice(KEEP_BACKUPS)) await request(store.delete(old.id))
+  const protectedOne = all.some((b) => b.id === keep)
+  const others = all.filter((b) => b.id !== keep).sort((a, b) => b.createdAt - a.createdAt)
+  const room = KEEP_BACKUPS - (protectedOne ? 1 : 0)
+  for (const old of others.slice(room)) await request(store.delete(old.id))
   await done
   return infoOf(backup)
 }

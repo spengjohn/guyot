@@ -79,6 +79,21 @@ describe('restoreBackup', () => {
     expect((await repo.list('applications')).map((r) => r.id)).toContain(b.id)
   })
 
+  it('never prunes the backup being restored, even the oldest', async () => {
+    const { backupId } = await scenario() // the oldest
+    for (let hour = 13; hour <= 16; hour++) {
+      time = at(hour)
+      await repo.createBackup(`later ${hour}`)
+    }
+    expect(await repo.listBackups()).toHaveLength(5)
+    time = at(17)
+    await repo.restoreBackup(backupId)
+    const ids = (await repo.listBackups()).map((b) => b.id)
+    expect(ids).toHaveLength(5)
+    expect(ids).toContain(backupId) // still there to restore again
+    expect((await repo.listBackups()).map((b) => b.reason)).not.toContain('later 13') // the oldest other went
+  })
+
   it('logs each change, so a single one can be undone', async () => {
     const { a, backupId } = await scenario()
     await repo.restoreBackup(backupId)

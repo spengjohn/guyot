@@ -3,20 +3,24 @@ import { useAnnounce } from '../app/announce'
 import { Page } from '../app/Page'
 import { useRepo, useRepoQuery, useRepoWrite } from '../app/repoContext'
 import type { BackupInfo } from '../data/backup'
+import { DecryptError, decryptText, encryptedFileIn, type EncryptedFile } from '../data/crypto'
 import {
   checkImport,
   exportData,
   exportFileName,
   exportToJson,
+  MAX_IMPORT_CHARS,
   mergeImport,
   type ImportCheck,
 } from '../data/exportImport'
 import type { Repo } from '../data/repo'
 import { TABLE_LABELS } from '../data/tableLabels'
 import type { TableName } from '../data/types/tables'
+import { BackupDownloadDialog } from '../data-page/BackupDownloadDialog'
 import { RestoreDialog } from '../data-page/RestoreDialog'
+import { SaveFileForm } from '../data-page/SaveFileForm'
+import { UnlockForm } from '../data-page/UnlockForm'
 import { formatMoment } from '../ui/dates'
-import { backupFileName, downloadText } from '../ui/download'
 
 const loadBackups = (repo: Repo) => repo.listBackups()
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -28,35 +32,54 @@ export function DataPage() {
   const announce = useAnnounce()
   const backups = useRepoQuery(loadBackups)
   const [checked, setChecked] = useState<{ fileName: string; check: ImportCheck } | null>(null)
+  // An encrypted file waiting for its passphrase.
+  const [locked, setLocked] = useState<{ fileName: string; file: EncryptedFile } | null>(null)
   const [fileKey, setFileKey] = useState(0) // a new key empties the file input
   const [restoring, setRestoring] = useState<BackupInfo | null>(null)
+  const [downloading, setDownloading] = useState<BackupInfo | null>(null)
   const resultRef = useRef<HTMLDivElement>(null)
 
-  // When a file has been checked, move focus to what it holds (or what's wrong with it).
+  // When a file has been read, move focus to what it holds (or what it needs).
   useEffect(() => {
-    if (checked) resultRef.current?.focus()
-  }, [checked])
+    if (checked || locked) resultRef.current?.focus()
+  }, [checked, locked])
 
-  const download = async () => {
-    try {
-      const file = await exportData(repo)
-      downloadText(exportToJson(file), exportFileName(file.exportedAt))
-      announce('Your data was downloaded.')
-    } catch (error) {
-      announce(`Couldn't download your data: ${messageOf(error)}`)
-    }
+  const getExport = async () => {
+    const file = await exportData(repo)
+    return { text: exportToJson(file), fileName: exportFileName(file.exportedAt) }
   }
 
   const chooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
     // file.text() reads the chosen file in the browser; nothing is uploaded.
-    const check = await checkImport(repo, await file.text())
-    setChecked({ fileName: file.name, check })
+    const text = await file.text()
+    const sealed = text.length <= MAX_IMPORT_CHARS ? encryptedFileIn(text) : null
+    if (sealed) {
+      setChecked(null)
+      setLocked({ fileName: file.name, file: sealed })
+      return
+    }
+    setLocked(null)
+    setChecked({ fileName: file.name, check: await checkImport(repo, text) })
+  }
+
+  const unlock = async (passphrase: string): Promise<boolean> => {
+    if (!locked) return false
+    try {
+      const text = await decryptText(locked.file, passphrase)
+      setChecked({ fileName: locked.fileName, check: await checkImport(repo, text) })
+      setLocked(null)
+      return true
+    } catch (error) {
+      if (error instanceof DecryptError) return false
+      throw error
+    }
   }
 
   const clearImport = () => {
     setChecked(null)
+    setLocked(null)
     setFileKey((k) => k + 1)
   }
 
@@ -87,13 +110,6 @@ export function DataPage() {
     }
   }
 
-  const downloadBackup = async (info: BackupInfo) => {
-    const backup = await repo.getBackup(info.id)
-    if (!backup) return announce('That backup no longer exists.')
-    downloadText(backup.json, backupFileName(backup.createdAt))
-    announce('Backup downloaded.')
-  }
-
   return (
     <Page title="Your data">
       <p>Everything here stays on this device unless you download it.</p>
@@ -101,19 +117,27 @@ export function DataPage() {
       <section aria-labelledby="export-heading" className="panel">
         <h2 id="export-heading">Download a copy</h2>
         <p>
-          A file with all your data, including deleted records and change history. It isn't
-          encrypted, so keep it somewhere safe. You can import it on another device or browser.
+          A file with all your data, including deleted records and change history, to keep or to
+          import on another device or browser. It's encrypted with a passphrase you choose.
         </p>
-        <button type="button" className="primary" onClick={download}>
-          Download a copy of your data
-        </button>
+        <SaveFileForm
+          encryptLabel="Download encrypted copy"
+          getFile={getExport}
+          onSaved={(encrypted) =>
+            announce(
+              encrypted
+                ? 'An encrypted copy of your data was downloaded.'
+                : 'An unencrypted copy of your data was downloaded.',
+            )
+          }
+        />
       </section>
 
       <section aria-labelledby="import-heading" className="panel">
         <h2 id="import-heading">Import a file</h2>
         <p>
           Merges a Guyot export into your data. Nothing is changed until you confirm, and a file
-          with any problem is refused whole.
+          with any problem is refused whole. Encrypted files ask for their passphrase.
         </p>
         <div className="field">
           <label htmlFor="import-file">Choose an export file</label>
@@ -125,6 +149,18 @@ export function DataPage() {
             onChange={chooseFile}
           />
         </div>
+        {locked && (
+          <div
+            ref={resultRef}
+            role="group"
+            tabIndex={-1}
+            className="import-result"
+            aria-labelledby="unlock-heading"
+          >
+            <h3 id="unlock-heading">{locked.fileName} is encrypted</h3>
+            <UnlockForm onUnlock={unlock} onCancel={clearImport} />
+          </div>
+        )}
         {checked && (
           <div
             ref={resultRef}
@@ -201,10 +237,10 @@ export function DataPage() {
                       <td className="row-actions">
                         <button
                           type="button"
-                          aria-label={`Download the backup from ${when}`}
-                          onClick={() => downloadBackup(backup)}
+                          aria-label={`Download the backup from ${when}…`}
+                          onClick={() => setDownloading(backup)}
                         >
-                          Download
+                          Download…
                         </button>
                         <button
                           type="button"
@@ -224,6 +260,9 @@ export function DataPage() {
       </section>
 
       {restoring && <RestoreDialog backup={restoring} onClose={() => setRestoring(null)} />}
+      {downloading && (
+        <BackupDownloadDialog backup={downloading} onClose={() => setDownloading(null)} />
+      )}
     </Page>
   )
 }

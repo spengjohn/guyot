@@ -31,6 +31,7 @@ Guyot has no server. The same data may be edited on several devices, offline, an
 | [repo.ts](../src/data/repo.ts)                   | All reads and writes: stamping, validation, logging, undo, merging            |
 | [exportImport.ts](../src/data/exportImport.ts)   | JSON export and import                                                        |
 | [backup.ts](../src/data/backup.ts)               | Local backups (newest five kept)                                              |
+| [crypto.ts](../src/data/crypto.ts)               | Passphrase encryption for downloads (PBKDF2 + AES-GCM, Web Crypto)            |
 | [restore.ts](../src/data/restore.ts)             | Planning a restore: what to change, delete and skipped. Pure                  |
 | [migrate.ts](../src/data/migrate.ts)             | Upgrading old data and old export files to the current format                 |
 | [fixtures.ts](../src/data/fixtures.ts)           | Test helpers only                                                             |
@@ -100,12 +101,16 @@ Inside a transaction, the code waits only on IndexedDB requests. Waiting on anyt
 
 Sync (build step 3) will reuse steps 2–5 for other devices' files.
 
+## Encrypted files
+
+Downloads (exports and backups) are encrypted by default ([ADR 0016](decisions/0016-encrypted-exports.md)): `encryptText(json, passphrase)` returns a JSON envelope with the salt, iterations and IV, bound to the ciphertext. On import, `encryptedFileIn(text)` recognises an envelope; `decryptText` opens it (throwing `DecryptError` for a wrong passphrase or a changed file), and the plain JSON then goes through `checkImport` as usual. Encryption runs outside IndexedDB transactions: `crypto.subtle` is asynchronous and would let a transaction close early.
+
 ## How a restore flows
 
 `repo.restoreBackup(backupId)` ([ADR 0015](decisions/0015-restore-as-edits.md)):
 
 1. Reads the backup, upgrades it to the current format, and validates it like an import file.
-2. Saves a backup of the current data (its own transaction), so the restore can be reversed.
+2. Saves a backup of the current data (its own transaction), so the restore can be reversed. Pruning to the newest five never removes the backup being restored.
 3. In one transaction, `planRestore` compares every current record with the backup's, and the plan is applied as ordinary edits: changed records get the backup's values (newly stamped), records created since are soft-deleted, records purged since are skipped, shared targets missing from the backup are reset. Each change is logged. Role ID collisions are renumbered.
 4. If anything fails, nothing changes.
 
@@ -127,6 +132,7 @@ Sync (build step 3) will reuse steps 2–5 for other devices' files.
 | Profile overrides and effective targets      | [targets.test.ts](../src/data/targets.test.ts); validate.test.ts and repo.test.ts "search profile overrides"                                                            |
 | Built-in Status options                      | validate.test.ts "accepts every Status option and rejects anything else"                                                                                                |
 | Local settings                               | validate.test.ts "validateLocalSettings"; repo.test.ts "local settings"                                                                                                 |
+| Encrypted downloads                          | [crypto.test.ts](../src/data/crypto.test.ts); exportImport.test.ts "imports an encrypted export"; DataPage.test.tsx                                                     |
 | Restore as edits                             | [restore.test.ts](../src/data/restore.test.ts)                                                                                                                          |
 | Import checked before merging                | exportImport.test.ts "checkImport"                                                                                                                                      |
 | Stale edits refused                          | repo.test.ts "refuses a stale edit"; App.test.tsx "editing the same application in two tabs"                                                                            |

@@ -19,6 +19,7 @@ Each record explains one design decision: the problem, what we chose, what we re
 | [0013](0013-fixed-builtin-choices.md)         | Built-in choice options are fixed, and checked strictly   |
 | [0014](0014-stale-edit-check.md)              | Saves are refused if a field changed since editing began  |
 | [0015](0015-restore-as-edits.md)              | Restoring a backup applies it as new edits                |
+| [0016](0016-encrypted-exports.md)             | Exports and downloaded backups are encrypted by default   |
 
 ## Adding a record
 

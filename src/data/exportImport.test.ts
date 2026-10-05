@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { SCHEMA_VERSION, SHARED_TARGETS_ID } from './constants'
+import { decryptText, encryptedFileIn, encryptText } from './crypto'
 import {
   checkImport,
   exportData,
@@ -78,6 +79,23 @@ describe('checkImport', () => {
     expect(await phone.list('applications')).toEqual([]) // nothing merged yet
 
     expect(await mergeImport(phone, check.file)).toMatchObject({ ok: true })
+    expect(await phone.list('applications')).toHaveLength(1)
+  })
+
+  it('imports an encrypted export once it is decrypted', async () => {
+    const { repo: laptop } = await device()
+    await laptop.create('applications', sampleApplication())
+    const sealed = JSON.stringify(
+      await encryptText(await exportJson(laptop), 'a long passphrase', 1_000),
+    )
+    const { repo: phone } = await device()
+
+    const found = encryptedFileIn(sealed)
+    expect(found).not.toBeNull()
+    expect(await checkImport(phone, sealed)).toMatchObject({ ok: false }) // not readable as is
+    const check = await checkImport(phone, await decryptText(found!, 'a long passphrase'))
+    if (!check.ok) throw new Error(check.errors[0])
+    await mergeImport(phone, check.file)
     expect(await phone.list('applications')).toHaveLength(1)
   })
 

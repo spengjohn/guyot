@@ -202,6 +202,7 @@ export class Repo {
       SCHEMA_VERSION,
       `Before restoring the backup from ${made} UTC`,
       this.clock(),
+      backupId, // never prune the backup being restored
     )
     const summary = await this.write(async (tx, ctx) => {
       const current: Partial<Record<TableName, Obj[]>> = {}

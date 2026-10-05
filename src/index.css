@@ -480,3 +480,21 @@ input[type='file'] {
   border: none;
   padding: 0;
 }
+
+/* ---------- Encrypted downloads ---------- */
+
+.unencrypted {
+  margin-top: 1rem;
+}
+.unencrypted summary {
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.unencrypted .warning {
+  border-left: 4px solid var(--danger);
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+.unencrypted .check {
+  margin-bottom: 0.5rem;
+}

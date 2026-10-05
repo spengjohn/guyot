@@ -3,6 +3,7 @@ import '../test/dom'
 import { screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { decryptText, encryptedFileIn, encryptText } from '../data/crypto'
 import { exportData, exportToJson } from '../data/exportImport'
 import { sampleApplication } from '../data/fixtures'
 import { Repo } from '../data/repo'
@@ -56,15 +57,50 @@ async function upload(user: UserEvent, text: string, name = 'export.json') {
   await user.upload(screen.getByLabelText('Choose an export file'), file)
 }
 
+const PASSPHRASE = 'plum orchard window seven'
+const exportPanel = () => within(screen.getByRole('region', { name: 'Download a copy' }))
+
 describe('download a copy', () => {
-  it('downloads every record as an export file', async () => {
+  it('downloads an encrypted export, once the passphrase is typed twice', async () => {
     const { user } = await openData()
-    await user.click(screen.getByRole('button', { name: 'Download a copy of your data' }))
+    const panel = exportPanel()
+    await user.type(panel.getByLabelText('Passphrase'), PASSPHRASE)
+    await user.type(panel.getByLabelText('Passphrase again'), 'something else entirely')
+    await user.click(panel.getByRole('button', { name: 'Download encrypted copy' }))
+    expect(await panel.findByText('The two passphrases don’t match.')).toBeTruthy()
+    expect(panel.getByLabelText('Passphrase again').getAttribute('aria-invalid')).toBe('true')
+    expect(downloads).toHaveLength(0)
+
+    await user.clear(panel.getByLabelText('Passphrase again'))
+    await user.type(panel.getByLabelText('Passphrase again'), PASSPHRASE)
+    await user.click(panel.getByRole('button', { name: 'Download encrypted copy' }))
+    await waitFor(() => expect(downloads).toHaveLength(1), { timeout: 5000 })
+    expect(downloads[0].name).toMatch(/^guyot-export-\d{4}-\d{2}-\d{2}-encrypted\.json$/)
+    const text = await blobText(downloads[0].blob)
+    const sealed = encryptedFileIn(text)
+    expect(sealed).not.toBeNull()
+    expect(JSON.parse(await decryptText(sealed!, PASSPHRASE))).toMatchObject({ app: 'guyot' })
+    expect(announced()).toBe('An encrypted copy of your data was downloaded.')
+    expect((panel.getByLabelText('Passphrase') as HTMLInputElement).value).toBe('') // cleared
+  })
+
+  it('downloads unencrypted only after a warning is acknowledged', async () => {
+    const { user } = await openData()
+    const panel = exportPanel()
+    await user.click(panel.getByText('Download without encryption (strongly recommended against)'))
+    expect(panel.getByText(/Unencrypted files are strongly recommended against/)).toBeTruthy()
+    const plain = panel.getByRole('button', { name: 'Download unencrypted' })
+    expect(plain.getAttribute('aria-disabled')).toBe('true')
+    await user.click(plain)
+    expect(panel.getByText(/Tick the box above first/)).toBeTruthy()
+    expect(downloads).toHaveLength(0)
+
+    await user.click(panel.getByRole('checkbox', { name: /I understand/ }))
+    await user.click(plain)
     await waitFor(() => expect(downloads).toHaveLength(1))
     expect(downloads[0].name).toMatch(/^guyot-export-\d{4}-\d{2}-\d{2}\.json$/)
-    const file = JSON.parse(await blobText(downloads[0].blob))
-    expect(file).toMatchObject({ app: 'guyot', formatVersion: 1 })
-    expect(announced()).toBe('Your data was downloaded.')
+    expect(JSON.parse(await blobText(downloads[0].blob))).toMatchObject({ app: 'guyot' })
+    expect(announced()).toBe('An unencrypted copy of your data was downloaded.')
   })
 })
 
@@ -82,6 +118,25 @@ describe('import a file', () => {
     expect(await screen.findByRole('rowheader', { name: 'R001' })).toBeTruthy()
   })
 
+  it('asks for the passphrase of an encrypted file before showing it', async () => {
+    const { user } = await openData()
+    const sealed = await encryptText(await exportFromAnotherDevice(), PASSPHRASE, 1_000)
+    await upload(user, JSON.stringify(sealed), 'sealed.json')
+    const locked = await screen.findByRole('group', { name: 'sealed.json is encrypted' })
+    const field = within(locked).getByLabelText('Passphrase for this file')
+
+    await user.type(field, 'not the passphrase')
+    await user.click(within(locked).getByRole('button', { name: 'Open file' }))
+    expect(await within(locked).findByRole('alert')).toBeTruthy()
+    expect(field.getAttribute('aria-invalid')).toBe('true')
+
+    await user.clear(field)
+    await user.type(field, PASSPHRASE)
+    await user.click(within(locked).getByRole('button', { name: 'Open file' }))
+    const result = await screen.findByRole('group', { name: 'Ready to import sealed.json' })
+    expect(within(result).getByText('Applications: 1')).toBeTruthy()
+  })
+
   it('refuses a bad file and changes nothing', async () => {
     const { user } = await openData()
     await upload(user, '{not json', 'broken.json')
@@ -92,6 +147,21 @@ describe('import a file', () => {
 })
 
 describe('backups', () => {
+  it('downloads a backup encrypted, from its own dialog', async () => {
+    const { user } = await openData()
+    await user.click(screen.getByRole('button', { name: 'Back up now' }))
+    await user.click(await screen.findByRole('button', { name: /^Download the backup from / }))
+    const dialog = within(await screen.findByRole('dialog', { name: /^Download the backup from / }))
+    await user.type(dialog.getByLabelText('Passphrase'), PASSPHRASE)
+    await user.type(dialog.getByLabelText('Passphrase again'), PASSPHRASE)
+    await user.click(dialog.getByRole('button', { name: 'Download encrypted backup' }))
+    await waitFor(() => expect(downloads).toHaveLength(1), { timeout: 5000 })
+    expect(downloads[0].name).toMatch(/^guyot-backup-.*-encrypted\.json$/)
+    expect(encryptedFileIn(await blobText(downloads[0].blob))).not.toBeNull()
+    expect(announced()).toBe('Encrypted backup downloaded.')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('backs up, then restores after showing what will change', async () => {
     const { user } = await openData()
     await user.click(screen.getByRole('button', { name: 'Back up now' }))

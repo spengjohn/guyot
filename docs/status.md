@@ -86,9 +86,14 @@ User interface:
 
 Known limits added in 2b:
 
-- The restore's own backup can push the oldest of the five backups out, possibly the one just restored (its data has already been applied).
 - Lists are typed one per line, so an item can't contain a line break.
 - Minimum pay defaults to USD; the device's own currency isn't detected.
+
+### After 2b: encrypted downloads and a backup fix
+
+- **Exports and downloaded backups are encrypted by default** ([ADR 0016](decisions/0016-encrypted-exports.md)): a passphrase typed twice; PBKDF2-SHA-256 (600,000 iterations) and AES-GCM from the browser's Web Crypto; a wrong passphrase or changed file fails cleanly. Unencrypted downloads sit behind a warning and an "I understand" box. Encrypted files ask for their passphrase on import; older plain files still import. Backups inside the browser stay unencrypted, like the live data (a "lock this device" feature could change that later).
+- **Restoring never prunes the backup being restored**: the oldest other backup goes instead.
+- 208 tests.
 
 ### Next: 2c
 

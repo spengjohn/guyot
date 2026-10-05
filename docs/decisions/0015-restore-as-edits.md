@@ -29,7 +29,7 @@ A restore is a set of ordinary edits that makes the current data match the backu
 ## Consequences
 
 - A restore can't bring back a record that was purged; the preview says how many.
-- Making the pre-restore backup can push the oldest backup out (the newest few are kept), possibly the one just restored. Its data has already been applied by then.
+- Only the newest five backups are kept, and the pre-restore backup counts toward them. The backup being restored is never the one pruned: the oldest _other_ backup goes instead, so you can restore the same backup again later. (Added 2026-10-04: before this, restoring the oldest backup removed it from the list.)
 - On other devices, restored values arrive as new edits. Where another device also edited the same field since, a real conflict is logged as usual.
 
 ## In the code
