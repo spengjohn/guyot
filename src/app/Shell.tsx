@@ -6,6 +6,7 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 import { TargetsPage } from '../pages/TargetsPage'
 import { TrackerPage } from '../pages/TrackerPage'
 import { hrefFor, type Route } from './routes'
+import { ThemeToggle } from './ThemeToggle'
 import { useHashRoute } from './useHashRoute'
 
 const NAV: { label: string; route: Route; current: Route['page'][] }[] = [
@@ -78,6 +79,7 @@ export function Shell() {
             ))}
           </ul>
         </nav>
+        <ThemeToggle />
       </header>
       <main id="main" ref={mainRef} tabIndex={-1}>
         {pageFor(route)}

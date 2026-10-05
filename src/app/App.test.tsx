@@ -38,6 +38,26 @@ describe('app shell', () => {
     expect(window.location.hash).toBe('') // the skip link didn't change the route
   })
 
+  it('switches dark mode on and off, and remembers it', async () => {
+    const { user, dbName, view } = await start()
+    const toggle = screen.getByRole('button', { name: 'Dark mode' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false') // jsdom's "device" is light
+    await user.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('guyot-theme')).toBe('dark')
+
+    view.unmount()
+    await start(dbName)
+    expect(screen.getByRole('button', { name: 'Dark mode' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    await user.click(screen.getByRole('button', { name: 'Dark mode' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    localStorage.removeItem('guyot-theme')
+    delete document.documentElement.dataset.theme
+  })
+
   it('moves to placeholder pages and focuses their heading', async () => {
     const { user } = await start()
     await user.click(screen.getByRole('link', { name: 'Targets' }))

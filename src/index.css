@@ -1,39 +1,11 @@
-/* Colors meet WCAG AA contrast (4.5:1 for text) in both themes. */
-:root {
-  --bg: #fbfaf7;
-  --surface: #ffffff;
-  --text: #1f1d24;
-  --muted: #57525e;
-  --border: #c9c5cf;
-  --accent: #4d5e1f;
-  --accent-text: #ffffff;
-  --danger: #a1260f;
-  --focus: #1a5fb4;
-  --notice-bg: #eef3e0;
+/* Tokens (colors, type, space, shape) live in styles/tokens.css; see docs/theme.md. */
+@import './styles/fonts.css';
+@import './styles/tokens.css';
 
-  color-scheme: light dark;
-  font:
-    16px/1.5 system-ui,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+:root {
+  font: var(--text-base) / var(--leading) var(--font-body);
   color: var(--text);
   background: var(--bg);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16151a;
-    --surface: #201f26;
-    --text: #ece9f0;
-    --muted: #b4aebd;
-    --border: #4a4652;
-    --accent: #b5c97a;
-    --accent-text: #16151a;
-    --danger: #ff9b85;
-    --focus: #8ab4f8;
-    --notice-bg: #2a3119;
-  }
 }
 
 *,
@@ -48,8 +20,8 @@ body {
 
 /* Visible focus for keyboard users, on everything that can take it. */
 :focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
 }
 /* Headings and main take focus from code only; a softer ring is enough. */
 [tabindex='-1']:focus-visible {
@@ -72,10 +44,10 @@ body {
   position: absolute;
   left: 1rem;
   top: -10rem;
-  padding: 0.5rem 1rem;
+  padding: var(--space-2) var(--space-4);
   background: var(--surface);
   color: var(--text);
-  border: 2px solid var(--focus);
+  border: var(--control-border-width) solid var(--focus);
   z-index: 10;
 }
 .skip-link:focus {
@@ -83,13 +55,8 @@ body {
 }
 
 a {
-  color: var(--accent);
+  color: var(--link);
   text-underline-offset: 0.15em;
-}
-@media (prefers-color-scheme: light) {
-  a {
-    color: #3a4a12;
-  }
 }
 
 /* ---------- Layout ---------- */
@@ -98,58 +65,68 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 2rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 .brand {
   margin: 0;
-  font-weight: 700;
-  font-size: 1.25rem;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xl);
 }
 .site-header ul {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .site-header a {
   display: inline-block;
-  padding: 0.25rem 0.5rem;
+  padding: var(--space-1) var(--space-2);
 }
+/* The current page is marked by weight and a thick accent underline, not color alone. */
 .site-header a[aria-current='page'] {
-  font-weight: 700;
-  text-decoration-thickness: 3px;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 4px;
 }
 
 main {
-  max-width: 80rem;
+  max-width: var(--page-width);
   margin: 0 auto;
-  padding: 1rem;
+  padding: var(--space-4);
 }
 main.center {
   text-align: center;
   padding-top: 4rem;
 }
 
+h1,
+h2,
+h3,
+h4 {
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
 h1 {
-  font-size: 1.75rem;
-  margin: 0.5rem 0 1rem;
+  font-size: var(--text-2xl);
+  margin: var(--space-2) 0 var(--space-4);
 }
 h2 {
-  font-size: 1.35rem;
-  margin: 0 0 0.75rem;
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-3);
 }
 h3 {
-  font-size: 1.05rem;
-  margin: 0 0 0.5rem;
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-2);
 }
 
 .hint {
   color: var(--muted);
-  margin: 0.25rem 0;
+  margin: var(--space-1) 0;
 }
 
 /* ---------- Controls ---------- */
@@ -164,20 +141,23 @@ textarea {
 
 button {
   padding: 0.4rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: var(--control-border-width) solid var(--control-border);
+  border-radius: var(--radius);
   background: var(--surface);
   cursor: pointer;
-  min-height: 2.25rem;
+  min-height: var(--control-min-height);
 }
 button:hover {
-  border-color: var(--muted);
+  border-color: var(--text);
 }
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+}
+button.primary:hover {
+  border-color: var(--text);
 }
 button[aria-disabled='true'] {
   opacity: 0.55;
@@ -187,9 +167,9 @@ button[aria-disabled='true'] {
 input,
 select,
 textarea {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--muted);
-  border-radius: 4px;
+  padding: 0.4rem var(--space-2);
+  border: var(--control-border-width) solid var(--control-border);
+  border-radius: var(--radius);
   background: var(--surface);
   max-width: 100%;
 }
@@ -197,7 +177,7 @@ textarea {
   width: 100%;
 }
 [aria-invalid='true'] {
-  border: 2px solid var(--danger);
+  border-color: var(--danger);
 }
 
 .toolbar {
@@ -216,10 +196,11 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  padding: 0.5rem 1rem;
-  margin-bottom: 1rem;
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
   background: var(--notice-bg);
   border-left: 4px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 .notice p {
   margin: 0;
@@ -230,30 +211,37 @@ textarea {
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 table {
   border-collapse: collapse;
   width: 100%;
+  /* Dates and Role IDs line up down a column. */
+  font-variant-numeric: tabular-nums;
 }
 caption {
   text-align: left;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   color: var(--muted);
 }
 th,
 td {
-  padding: 0.5rem 0.75rem;
+  padding: var(--row-padding) var(--space-3);
   text-align: left;
   vertical-align: top;
   border-top: 1px solid var(--border);
 }
 thead th {
   white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+tbody tr:nth-child(even) {
+  background: var(--surface-alt);
 }
 tbody th {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .row-actions {
   white-space: nowrap;
@@ -269,9 +257,9 @@ tbody th {
 }
 .column-panel {
   margin: 0.5rem 0 0;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .column-panel ol {
@@ -299,14 +287,14 @@ tbody th {
 .dialog {
   width: min(40rem, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
-  padding: 1.25rem;
+  padding: var(--space-5);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
 }
 .dialog::backdrop {
-  background: rgb(0 0 0 / 0.5);
+  background: var(--overlay);
 }
 
 .field {
@@ -317,11 +305,11 @@ tbody th {
 }
 .field label,
 .field-group legend {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .field-group {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 0.5rem 0.75rem 0;
   margin: 0 0 0.9rem;
 }
@@ -333,12 +321,12 @@ tbody th {
 .field-error {
   margin: 0;
   color: var(--danger);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .error-summary {
-  border: 2px solid var(--danger);
-  border-radius: 6px;
+  border: var(--control-border-width) solid var(--danger);
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
@@ -358,7 +346,7 @@ tbody th {
 .conflicts {
   border: 1px solid var(--border);
   border-left: 4px solid var(--danger);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
@@ -368,7 +356,7 @@ tbody th {
   padding-top: 0.75rem;
 }
 .conflict h4 {
-  font-size: 1rem;
+  font-size: var(--text-base);
   margin: 0 0 0.5rem;
 }
 .compare {
@@ -378,7 +366,7 @@ tbody th {
   margin: 0;
 }
 .compare dt {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .compare dd {
   margin: 0;
@@ -396,7 +384,7 @@ tbody th {
 /* ---------- Required marker and optional section ---------- */
 
 .required {
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--muted);
 }
 .disclosure {
@@ -415,7 +403,7 @@ tbody th {
   margin: 1.5rem 0;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 .panel > h2 {
@@ -425,7 +413,7 @@ button.danger {
   background: var(--danger);
   border-color: var(--danger);
   color: var(--surface);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .check {
   display: flex;
@@ -458,7 +446,7 @@ button.danger {
   display: contents;
 }
 .facts dt {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .facts dd {
   margin: 0;
@@ -516,7 +504,7 @@ input[type='file'] {
 }
 details.collapsible {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   margin-bottom: 0.5rem;
 }
@@ -539,7 +527,7 @@ details.collapsible[open] > summary::before {
   content: '▾' / '';
 }
 .collapsible-label {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .collapsible-preview {
   color: var(--muted);
@@ -553,8 +541,8 @@ details.collapsible[open] > summary::before {
   margin-bottom: 0;
 }
 .tag {
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   color: var(--danger);
   border: 1px solid var(--danger);
   border-radius: 999px;
@@ -584,7 +572,7 @@ details.collapsible[open] > summary::before {
 }
 .list-add label {
   flex-basis: 100%;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 /* ---------- Profile cards ---------- */
@@ -605,7 +593,7 @@ details.collapsible[open] > summary::before {
   gap: 0.25rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 .card-header {
@@ -629,7 +617,7 @@ details.collapsible[open] > summary::before {
   margin-bottom: 0.35rem;
 }
 .card-fields dt {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 .card-fields dd {
@@ -642,4 +630,45 @@ details.collapsible[open] > summary::before {
   gap: 0.5rem;
   margin-top: auto;
   padding-top: 0.5rem;
+}
+
+/* ---------- User settings the theme respects ---------- */
+
+/* Windows High Contrast and similar: the system picks the colors. Keep the cues that
+   would otherwise vanish with background colors. */
+@media (forced-colors: active) {
+  button.primary,
+  button.danger {
+    border-width: 3px;
+  }
+  button[aria-disabled='true'] {
+    color: GrayText;
+    opacity: 1;
+  }
+  .site-header a[aria-current='page'] {
+    text-decoration-color: currentColor;
+  }
+}
+
+/* No animations exist yet; this keeps any added later from moving for people who opt out. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Light / dark toggle ---------- */
+
+.theme-toggle {
+  margin-left: auto;
+}
+/* On: the same 4px accent underline as the current nav page, plus the pressed state. */
+.theme-toggle[aria-pressed='true'] {
+  font-weight: var(--weight-bold);
+  box-shadow: inset 0 -4px 0 var(--accent);
 }

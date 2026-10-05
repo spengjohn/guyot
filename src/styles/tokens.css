@@ -1,0 +1,116 @@
+/*
+ * Design tokens: the vineyard theme (docs/decisions/0017-vineyard-theme.md, guide in
+ * docs/theme.md). Components use these names, never literal colors.
+ *
+ * Three color families and nothing else: warm earth for pages and text, one leaf green
+ * for actions and links, and honey ("fruit") for anything AI touched. Brick red is kept
+ * for errors only. The focus ring is the text color, so it adds no hue of its own.
+ *
+ * Contrast rules, checked by src/styles/tokens.test.ts in both modes:
+ * - All text (body, hints, links, errors) on every surface: at least 7:1 (WCAG AAA).
+ * - Text on the accent (primary buttons): at least 4.5:1.
+ * - Control borders and the focus ring: at least 3:1 against what is around them.
+ *
+ * Mode: follows the device unless <html data-theme="light|dark"> picks one. The dark
+ * values appear twice (system dark, chosen dark) because CSS can't share them between a
+ * media query and an attribute selector without a build step.
+ */
+
+:root {
+  /* ---------- Color (light) ---------- */
+  --bg: #f8f4ec; /* page */
+  --surface: #fffdf8; /* header, tables, dialogs, inputs */
+  --surface-alt: #f3eee3; /* striped table rows */
+  --text: #241f17;
+  --muted: #554c3d; /* hints, captions, column headers */
+  --border: #e0d7c4; /* dividers only; never the only edge of a control */
+  --control-border: #7d7360; /* inputs, buttons: 3:1 or more */
+  --accent: #437514; /* leaf: primary buttons, current page marker */
+  --accent-text: #fefde4;
+  --link: #284606; /* a darker leaf, so links reach 7:1 */
+  --ai: #5f4300; /* fruit: reserved for anything AI suggested or applied */
+  --ai-bg: #f5e6bd;
+  --danger: #8a2a0b; /* brick: errors only */
+  --focus: #241f17; /* the text color: no extra hue */
+  --notice-bg: #eaf0dc;
+  --overlay: rgb(36 31 23 / 0.55); /* dialog backdrop */
+
+  /* ---------- Type ---------- */
+  --font-body: 'Atkinson Hyperlegible Next', system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* rem, so the scale follows the browser's font size setting. */
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --leading: 1.5;
+  --leading-tight: 1.2;
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---------- Space ---------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --row-padding: 0.5rem; /* table rows: comfortable */
+  --page-width: 80rem;
+
+  /* ---------- Shape ---------- */
+  --radius: 3px; /* crisp */
+  --radius-lg: 6px; /* dialogs and panels */
+  --control-border-width: 2px;
+  --control-min-height: 2.5rem; /* 40px; above the 24px minimum target size */
+  --focus-width: 3px;
+  --focus-offset: 2px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #1a1712;
+    --surface: #2d2820;
+    --surface-alt: #24201a;
+    --text: #f0eadf;
+    --muted: #c6bca9;
+    --border: #3f392f;
+    --control-border: #8a8270;
+    --accent: #b0ce91;
+    --accent-text: #171613;
+    --link: #b0ce91;
+    --ai: #e2c77e;
+    --ai-bg: #45350c;
+    --danger: #edaf98;
+    --focus: #f0eadf;
+    --notice-bg: #2f311e;
+    --overlay: rgb(0 0 0 / 0.65);
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #1a1712;
+  --surface: #2d2820;
+  --surface-alt: #24201a;
+  --text: #f0eadf;
+  --muted: #c6bca9;
+  --border: #3f392f;
+  --control-border: #8a8270;
+  --accent: #b0ce91;
+  --accent-text: #171613;
+  --link: #b0ce91;
+  --ai: #e2c77e;
+  --ai-bg: #45350c;
+  --danger: #edaf98;
+  --focus: #f0eadf;
+  --notice-bg: #2f311e;
+  --overlay: rgb(0 0 0 / 0.65);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}

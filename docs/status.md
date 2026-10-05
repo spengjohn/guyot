@@ -102,6 +102,19 @@ Known limits added in 2b:
 - Search profiles are cards instead of a table, so they fit narrow screens: the name as the heading, then only the fields that have a value, an "Inactive" tag when switched off, how many shared targets it overrides, Last updated, and Edit, Duplicate and Delete. Cards flow as many per row as fit.
 - 220 tests.
 
+### After 2b: the vineyard theme
+
+- The vineyard theme ([ADR 0017](decisions/0017-vineyard-theme.md); the guide is [theme.md](theme.md)). Every color, size, space and shape is a token in [src/styles/tokens.css](../src/styles/tokens.css); `index.css` uses only tokens.
+- All text meets 7:1 contrast in light and dark; control borders and focus rings meet 3:1. A test ([tokens.test.ts](../src/styles/tokens.test.ts)) checks every rule.
+- Atkinson Hyperlegible Next, self-hosted (no font service).
+- Fixes: button borders that were below 3:1, and the root font size set in pixels (now rem, so browser text-size settings apply).
+- Light, dark and system modes through `<html data-theme>`; forced colors (Windows high contrast) and reduced motion are respected.
+- The new vine favicon.
+
+- A **Dark mode** toggle in the header, remembered on this device.
+
+Deferred: a "use device setting" option for the toggle (once toggled, the choice sticks); status markers; chart colors (2c); AI badges (step 5).
+
 ### Next: 2c
 
 The dashboard: KPI tiles, the goal tracker with pace, charts, a "needs attention" list, and job description snapshots. A plan will be shown before work starts.

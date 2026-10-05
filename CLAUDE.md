@@ -31,6 +31,7 @@ A free, open web app for running a supervised job search. Named for the Guyot me
 - **Manual first.** Build every stage so it works by hand, then add AI as a "Suggest" button that pre-fills the same fields through the review gate (or applies them, in automatic stages).
 - **Dependency-light.** Prefer small, hand-written code over libraries (no runtime dependencies without a stated reason). Dashboard charts are hand-built SVG components (no charting library).
 - **Accessible by default.** This is an HCI project. Use semantic HTML, labels on every input, keyboard support and visible focus. `eslint-plugin-jsx-a11y` enforces the basics.
+- **One theme, from tokens.** All colors, sizes and spacing come from `src/styles/tokens.css`; never write a literal color in component CSS. Three color families only (earth, leaf, fruit for AI) plus brick for errors; ask before adding a hue. All text meets 7:1 contrast in light and dark. See `docs/theme.md`.
 - **Small, testable steps.** Show a plan before large changes.
 
 ## Tech stack
@@ -58,6 +59,7 @@ Keep the docs current as part of each change, not afterwards:
 - **Decisions:** when a design choice is made (especially one that rejects a simpler approach to avoid losing data), add a record in `docs/decisions/` using the outline in its README, and link it from the code it explains. Replaced decisions are marked superseded, not deleted.
 - **Status:** at the end of each build step, update `docs/status.md`: what was built, what was deferred and why, known limits, what's next.
 - **Data layer:** when files, flows or rule coverage in `src/data/` change, update `docs/data-layer.md`.
+- **Theme:** when a token, color or shared component style changes, update `docs/theme.md` and the contrast rules in `src/styles/tokens.test.ts`.
 - **TypeScript notes:** when a new TypeScript concept first appears, add it to `docs/typescript-notes.md` with an example from the code.
 
 ## Data model
